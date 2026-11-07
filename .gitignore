@@ -8,3 +8,4 @@ models/*.tflite
 models/*.onnx
 test_images/*
 !test_images/.gitkeep
+calibration/*_mock*
