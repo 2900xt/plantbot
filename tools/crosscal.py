@@ -98,11 +98,12 @@ def main():
         cal = crosscal.fit(xs, ys)
     except ValueError as err:
         sys.exit(f"fit failed: {err}")
-    print(f"\nlr_bme = {cal.a:.3f} * lr_mq2 + {cal.b:+.3f}   r2={cal.r2:.2f}  n={cal.n}  MQ-2 span={cal.x_span:.3f}")
+    r2 = "n/a" if cal.r2 is None else f"{cal.r2:.2f}"
+    print(f"\nlr_bme = {cal.a:.3f} * lr_mq2   r2={r2}  n={cal.n}  MQ-2 span={cal.x_span:.3f}")
     if cal.x_span < 0.1:
         print("WARNING: the MQ-2 barely moved. It probably can't see these sources at this "
               "distance, so the differential will be mostly BME680. Try closer or stronger sources.")
-    if cal.r2 is not None and cal.r2 < 0.5:
+    if cal.r2 is None or cal.r2 < 0.5:
         print("WARNING: poor fit (r2 < 0.5). The sensors disagree on these smells; check they "
               "share the same air, or that the BME680 wasn't still warming up.")
     cal.save(out_path)
