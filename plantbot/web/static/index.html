@@ -110,6 +110,7 @@
       <h2>VOCs (ratio vs clean-air baseline, &gt;1 = more VOCs)</h2>
       <div class="spark"><span>MQ-2</span><canvas id="sp-mq2"></canvas><span class="v" id="v-mq2">–</span></div>
       <div class="spark"><span>BME680 gas</span><canvas id="sp-gas"></canvas><span class="v" id="v-gas">–</span></div>
+      <div class="spark" title="Plant-side sensor minus background sensor, MQ-2 mapped onto the BME680 scale. &gt;1 = the plant smells more than its surroundings. * = not cross-calibrated yet (run tools/crosscal.py)."><span id="l-diff">plant vs bg</span><canvas id="sp-diff"></canvas><span class="v" id="v-diff">–</span></div>
       <div class="kv" id="envkv"></div>
       <div id="devices" style="margin-top:6px"></div>
     </div>
@@ -122,7 +123,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let ws, tele = {}, connected = false;
-const hist = { mq2: [], gas: [] };
+const hist = { mq2: [], gas: [], diff: [] };
 const HIST_N = 300; // 60 s at 5 Hz
 
 // ---------- websocket ----------
@@ -205,9 +206,10 @@ function onTelemetry(t) {
   $('error').style.display = t.error ? 'block' : 'none';
   $('error').textContent = t.error || '';
   $('hud').textContent = `motors ${fmt(t.motors[0])} ${fmt(t.motors[1])} · range ${t.range_cm == null ? '–' : t.range_cm.toFixed(0) + ' cm'} · watchdog stops ${t.watchdog_trips}`;
-  push(hist.mq2, t.ratios.mq2); push(hist.gas, t.ratios.gas);
-  $('v-mq2').textContent = fmt(t.ratios.mq2); $('v-gas').textContent = fmt(t.ratios.gas);
-  drawSpark($('sp-mq2'), hist.mq2); drawSpark($('sp-gas'), hist.gas);
+  push(hist.mq2, t.ratios.mq2); push(hist.gas, t.ratios.gas); push(hist.diff, t.ratios.diff);
+  $('v-mq2').textContent = fmt(t.ratios.mq2); $('v-gas').textContent = fmt(t.ratios.gas); $('v-diff').textContent = fmt(t.ratios.diff);
+  $('l-diff').textContent = t.diff_calibrated ? 'plant vs bg' : 'plant vs bg*';
+  drawSpark($('sp-mq2'), hist.mq2); drawSpark($('sp-gas'), hist.gas); drawSpark($('sp-diff'), hist.diff);
   const e = t.env;
   $('envkv').innerHTML = `<span>MQ-2 <b>${fmt(e.mq2_v, 3)} V</b></span><span>gas <b>${e.gas_ohms == null ? '–' : (e.gas_ohms / 1000).toFixed(1) + ' kΩ'}</b></span>` +
     `<span>temp <b>${fmt(e.temp_c, 1)} °C</b></span><span>RH <b>${fmt(e.rh, 1)} %</b></span>`;
@@ -241,7 +243,7 @@ function showScan(s) {
   $('label').textContent = `${s.label} · ${s.backend}`;
   $('explain').textContent = s.explain || '';
   $('scankv').innerHTML = `<span>p_healthy <b>${fmt(s.p_healthy)}</b></span><span>MQ-2 ratio <b>${fmt(s.mq2_ratio)}</b></span>` +
-    `<span>gas ratio <b>${fmt(s.gas_ratio)}</b></span><span>RH <b>${fmt(s.rh, 1)}%</b></span>` +
+    `<span>gas ratio <b>${fmt(s.gas_ratio)}</b></span><span>plant vs bg <b>${fmt(s.diff_ratio)}</b></span><span>RH <b>${fmt(s.rh, 1)}%</b></span>` +
     `<span>isolation <b>${s.isolation}</b></span><span>infer <b>${fmt(s.infer_ms, 0)} ms</b></span>`;
 }
 function addStrip(s, front) {
