@@ -6,15 +6,15 @@ server:
   port: 8000
 
 motors:
-  # servo    = 2 continuous-rotation servos (current rover v1 CAD)
-  # gpiozero = TB6612FNG / L298N H-bridge
+  # servo    = 2 continuous-rotation servos (rover v1 CAD)
+  # gpiozero = TB6612FNG / L298N H-bridge (current rover: TT gear motors on a TB6612FNG)
   # serial   = Arduino motor shield over USB (see software/README.md firmware fallback)
   # mock     = prints / tracks speeds only
-  driver: servo                # (assumed)
+  driver: gpiozero
   watchdog_ms: 500             # stop if no drive command for this long
   max_speed: 1.0               # global clamp, 0..1
   invert_left: false
-  invert_right: true           # servos mounted back to back: one spins the other way
+  invert_right: false          # flip if hw_check spins a wheel backwards (or swap its motor leads)
   trim_left: 0.0               # servo stop-point trim (-0.1..0.1) if a wheel creeps at 0
   trim_right: 0.0
   servo:
@@ -30,6 +30,9 @@ motors:
     right_in2: 23
     right_pwm: 13
     stby: 24                   # TB6612 only; null for L298N
+    pwm_hz: 1000               # TB6612 takes up to 100 kHz; software PWM on the Pi is fine at 1 kHz
+    min_duty: 0.3              # (assumed) duty where a TT motor starts turning on the ground; tune with hw_check
+    # Motor supply (VM): ~6 V from a buck converter off the 3S LiPo. TT motors are 3-6 V.
   serial:
     port: /dev/ttyACM0
     baud: 115200

@@ -70,6 +70,7 @@ def check_motors(cfg):
             time.sleep(0.5)
         print("  If a wheel spun the wrong way, flip invert_left/invert_right in config.yaml.")
         print("  If a servo creeps when stopped, set trim_left/trim_right.")
+        print("  If a DC wheel barely moves or hums, raise hbridge.min_duty in config.yaml.")
     finally:
         m.close()
 

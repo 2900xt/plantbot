@@ -59,39 +59,65 @@ class ServoMotors:
         self.r.close()
 
 
-class GpioZeroMotors:
-    """TB6612FNG or L298N via gpiozero (works on Pi 4 and Pi 5)."""
+class _HBridgeChannel:
+    """One TB6612/L298N channel: IN1/IN2 set direction, PWM (or ENA) sets speed.
 
-    def __init__(self, cfg):
-        from gpiozero import Motor, OutputDevice  # lazy
+    gpiozero's Motor holds `enable` high and PWMs IN1/IN2 instead, which leaves the
+    TB6612 coasting between pulses. Here PWM low = short brake (TB6612) or free run
+    (L298N), so low speeds have more torque and a stop actually stops.
+    """
 
-        h = cfg.hbridge
-        self.stby = OutputDevice(h.stby, initial_value=True) if h.get("stby") is not None else None
-        self.l = Motor(forward=h.left_in1, backward=h.left_in2, enable=h.left_pwm, pwm=True)
-        self.r = Motor(forward=h.right_in1, backward=h.right_in2, enable=h.right_pwm, pwm=True)
+    def __init__(self, in1: int, in2: int, pwm: int, freq: int, min_duty: float):
+        from gpiozero import DigitalOutputDevice, PWMOutputDevice  # lazy
 
-    @staticmethod
-    def _set(m, v: float) -> None:
-        if v > 0:
-            m.forward(v)
-        elif v < 0:
-            m.backward(-v)
-        else:
-            m.stop()
+        self.in1 = DigitalOutputDevice(in1)
+        self.in2 = DigitalOutputDevice(in2)
+        self.pwm = PWMOutputDevice(pwm, frequency=freq)
+        self.min_duty = min_duty
 
-    def drive(self, left: float, right: float) -> None:
-        self._set(self.l, _clamp(left))
-        self._set(self.r, _clamp(right))
-
-    def stop(self) -> None:
-        self.l.stop()
-        self.r.stop()
+    def set(self, v: float) -> None:
+        v = _clamp(v)
+        if v == 0:
+            self.pwm.value = 0
+            return
+        # Gear motors don't turn below some duty; map (0, 1] onto [min_duty, 1].
+        duty = self.min_duty + (1 - self.min_duty) * abs(v)
+        self.in1.value, self.in2.value = (v > 0), (v < 0)
+        self.pwm.value = duty
 
     def close(self) -> None:
-        self.stop()
-        for d in (self.l, self.r, self.stby):
-            if d:
-                d.close()
+        self.pwm.value = 0
+        for d in (self.pwm, self.in1, self.in2):
+            d.close()
+
+
+class GpioZeroMotors:
+    """TB6612FNG (or L298N, ENA/ENB on the PWM pins) via gpiozero. Works on Pi 4 and Pi 5."""
+
+    def __init__(self, cfg):
+        from gpiozero import DigitalOutputDevice  # lazy
+
+        h = cfg.hbridge
+        freq, min_duty = h.get("pwm_hz", 1000), h.get("min_duty", 0.0)
+        self.l = _HBridgeChannel(h.left_in1, h.left_in2, h.left_pwm, freq, min_duty)
+        self.r = _HBridgeChannel(h.right_in1, h.right_in2, h.right_pwm, freq, min_duty)
+        # STBY low = both channels off (TB6612 only). Raised last so nothing twitches on init.
+        self.stby = DigitalOutputDevice(h.stby, initial_value=True) if h.get("stby") is not None else None
+
+    def drive(self, left: float, right: float) -> None:
+        self.l.set(left)
+        self.r.set(right)
+
+    def stop(self) -> None:
+        self.l.set(0)
+        self.r.set(0)
+
+    def close(self) -> None:
+        if self.stby:
+            self.stby.off()
+            self.stby.close()
+        self.l.close()
+        self.r.close()
 
 
 class SerialMotors:
