@@ -1,0 +1,9 @@
+-r requirements.txt
+bme680                              # Pimoroni BME680 lib (works with Adafruit boards too)
+adafruit-circuitpython-ads1x15      # ADS1115 for the MQ-2
+adafruit-blinka
+pyserial                            # only if motors.driver: serial (Arduino)
+# Model runtime: install whichever one installs on our Pi OS (test at M1)
+# ai-edge-litert
+# tflite-runtime
+# onnxruntime

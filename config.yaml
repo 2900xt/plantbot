@@ -1,0 +1,141 @@
+# plantbot config. Hardware we haven't confirmed is marked (assumed).
+# Swap drivers/pins here, not in code. `--mock` forces every device to its mock driver.
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+motors:
+  # servo    = 2 continuous-rotation servos (current rover v1 CAD)
+  # gpiozero = TB6612FNG / L298N H-bridge
+  # serial   = Arduino motor shield over USB (see software/README.md firmware fallback)
+  # mock     = prints / tracks speeds only
+  driver: servo                # (assumed)
+  watchdog_ms: 500             # stop if no drive command for this long
+  max_speed: 1.0               # global clamp, 0..1
+  invert_left: false
+  invert_right: true           # servos mounted back to back: one spins the other way
+  trim_left: 0.0               # servo stop-point trim (-0.1..0.1) if a wheel creeps at 0
+  trim_right: 0.0
+  servo:
+    left_pin: 12               # GPIO (BCM). Hardware-PWM capable pins: 12, 13, 18, 19
+    right_pin: 13
+    min_pulse_ms: 1.0
+    max_pulse_ms: 2.0
+  hbridge:
+    left_in1: 17
+    left_in2: 27
+    left_pwm: 12
+    right_in1: 22
+    right_in2: 23
+    right_pwm: 13
+    stby: 24                   # TB6612 only; null for L298N
+  serial:
+    port: /dev/ttyACM0
+    baud: 115200
+
+camera:
+  # opencv   = USB webcam (Logitech on the rover, or your laptop webcam)
+  # picamera = Pi Camera Module on CSI via picamera2
+  # folder   = cycle photos in mock.camera_folder (synthetic plants if the folder is empty)
+  driver: opencv
+  device: 0                    # /dev/videoN for opencv
+  width: 1280
+  height: 720
+  lores_width: 640
+  lores_height: 480
+  stream_fps: 12
+  jpeg_quality: 75
+
+env:
+  driver: real                 # real = BME680 + MQ-2 via ADS1115; mock
+  i2c_bus: 1
+  bme680_address: 0x77         # 0x77 Adafruit, 0x76 generic. Check with `i2cdetect -y 1`
+  ads1115_address: 0x48
+  ads1115_channel: 0           # A0 = MQ-2 AO
+  ads1115_gain: 1              # 1 = +/-4.096 V full scale
+  mq2:
+    divider: 1.5               # Vout = Vads * divider (e.g. 1k/2k divider on the 5V AO -> 1.5)
+    vc: 5.0                    # MQ-2 module supply voltage
+    rl_kohm: 1.0               # load resistor on the module (MEASURE IT, often 1-10k)
+
+ranger:
+  driver: hcsr04               # hcsr04 | none | mock
+  trig_pin: 5
+  echo_pin: 6                  # 5V echo: divide to 3.3V!
+  max_cm: 200
+
+fan:
+  driver: gpio                 # gpio | none | mock
+  pin: 26
+
+sensing:
+  sample_hz: 10
+  smooth_alpha: 0.3            # EWMA on raw readings
+  warmup_s: 120                # max warm-up time; ends earlier if readings are stable
+  warmup_min_s: 30
+  warmup_stable_slope: 0.002   # V/s on MQ-2; below this for warmup_stable_s = warmed up
+  warmup_stable_s: 20
+  baseline_alpha: 0.002        # slow baseline tracking while IDLE/CRUISE (per sample)
+  sniff_settle_s: 2.0          # fan on, wait for air to arrive
+  sniff_window_s: 6.0          # then average this long
+  csv_hz: 1
+
+vision:
+  work_width: 640              # isolate runs on a downscaled copy
+  # OpenCV HSV: H 0-180. Range covers brown/yellow (5-35) and green (35-90).
+  hue_min: 5
+  hue_max: 90
+  sat_min: 40
+  val_min: 30
+  brown_hue_max: 22            # hues below this are "brown" and need brown_sat_min
+  brown_sat_min: 70
+  tile_px: 32                  # Laplacian-variance tile size
+  sharp_rel: 0.15              # tile is "sharp" if var > sharp_rel * 90th percentile tile var
+  sharp_abs_min: 15.0
+  center_frac: 0.5             # blob must touch the central region of this size
+  min_blob_frac: 0.02          # smaller blobs -> fallback center crop
+  pad_frac: 0.10
+  fallback_crop_frac: 0.6
+
+classifier:
+  backend: dummy               # dummy | tflite | onnx | remote
+  model: models/plant.tflite   # or models/plant.onnx
+  labels: models/labels.txt
+  input_size: 224
+  normalize: "0-1"             # "0-1" | "-1-1" | "imagenet"
+  remote_url: http://laptop.local:8001/predict
+  remote_timeout_s: 5
+
+fusion:
+  w_img: 0.7
+  w_voc: 0.3
+  voc_full_scale: 0.5
+  healthy_min: 70
+  watch_min: 40
+
+mission:
+  settle_s: 0.5
+  cruise_speed: 0.35
+  approach_speed: 0.2
+  approach_cm: 25              # (unverified) start approach when plant is this close
+  stop_cm: 15                  # (unverified) stop and scan here
+  clear_cm: 40                 # PASS_PLANT until range is above this
+  pass_timeout_s: 5
+  auto_max_scans: 5
+  auto_timeout_s: 180
+
+store:
+  dir: scans
+
+mock:
+  camera: folder               # folder | opencv  (--camera overrides)
+  camera_folder: test_images
+  warmup_s: 5
+  # Scripted VOC events, seconds after start: mq2_dv adds volts, gas_scale multiplies resistance
+  env_script:
+    - {t: 40, duration: 12, mq2_dv: 0.35, gas_scale: 0.6}
+  # Dashboard "Mock VOC spike" button uses these
+  spike: {duration: 12, mq2_dv: 0.4, gas_scale: 0.55}
+  plant_spacing_cm: 60         # MockRanger: plants along a virtual row
+  speed_cm_s: 30               # MockRanger: cm/s at drive(1, 1)

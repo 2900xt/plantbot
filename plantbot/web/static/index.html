@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>plantbot</title>
+<style>
+  :root {
+    --bg: #0f1412; --panel: #18201c; --line: #2a352f; --text: #e3ece6; --dim: #8a9a90;
+    --green: #3fbf6f; --amber: #e0a43a; --red: #e0483a; --blue: #4a9de0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  .badge { padding: 3px 9px; border-radius: 99px; background: var(--line); font-weight: 600; font-size: 12px; letter-spacing: .03em; }
+  .badge.ESTOP { background: var(--red); }
+  .badge.IDLE { background: #2c5a3c; }
+  .badge.WARMUP { background: #6b5320; }
+  #conn.off { background: var(--red); }
+  #estop { margin-left: auto; background: var(--red); color: #fff; border: 0; border-radius: 10px; font-weight: 800; font-size: 18px; padding: 10px 22px; letter-spacing: .05em; }
+  #estop.reset { background: var(--amber); color: #000; }
+  #banner { display: none; padding: 6px 12px; background: #4a3a14; color: #ffd98a; }
+  #error { display: none; padding: 6px 12px; background: #4a1a14; color: #ffb0a8; }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 12px; padding: 12px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding: 8px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 8px; }
+  #video { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; }
+  #video img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #pad { position: absolute; right: 10px; bottom: 10px; display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
+  #pad button { background: rgba(20,30,25,.65); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 10px; font-size: 22px; touch-action: none; }
+  #pad button.on { background: rgba(63,191,111,.8); }
+  #hud { position: absolute; left: 10px; top: 10px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 6px; font: 12px ui-monospace, monospace; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .btn { background: var(--line); color: var(--text); border: 1px solid #3a4a40; border-radius: 8px; padding: 9px 14px; font-weight: 600; font-size: 14px; }
+  .btn.primary { background: var(--green); color: #052; border-color: var(--green); font-size: 16px; padding: 10px 22px; }
+  .btn:disabled { opacity: .4; }
+  .btn.active { background: var(--blue); border-color: var(--blue); }
+  #mockbtn { display: none; }
+  label.speed { color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .spark { display: grid; grid-template-columns: 90px 1fr 54px; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .spark canvas { width: 100%; height: 42px; background: #111815; border-radius: 4px; }
+  .spark .v { text-align: right; font: 600 14px ui-monospace, monospace; }
+  .kv { display: flex; gap: 14px; flex-wrap: wrap; color: var(--dim); font-size: 12px; }
+  .kv b { color: var(--text); font-weight: 600; }
+  #devices span { margin-right: 6px; font-size: 11px; }
+  .ok { color: var(--green); } .mock { color: var(--blue); } .offline { color: var(--red); }
+  #card .imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #card .imgs figure { margin: 0; }
+  #card .imgs img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; background: #000; display: block; }
+  #card .imgs figcaption { color: var(--dim); font-size: 11px; text-align: center; }
+  #score { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+  #score .n { font-size: 44px; font-weight: 800; }
+  #score .s { font-weight: 700; text-transform: uppercase; }
+  .healthy { color: var(--green); } .watch { color: var(--amber); } .unhealthy { color: var(--red); }
+  #explain { color: var(--dim); }
+  #strip { display: flex; gap: 4px; flex-wrap: wrap; }
+  #strip div { width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 10px; display: grid; place-items: center; color: #000; font-weight: 700; }
+  #strip .healthy { background: var(--green); } #strip .watch { background: var(--amber); } #strip .unhealthy { background: var(--red); }
+  .muted { color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 plantbot</h1>
+  <span class="badge" id="state">…</span>
+  <span class="badge" id="mode">manual</span>
+  <span class="badge" id="conn">connecting</span>
+  <button id="estop">E-STOP</button>
+</header>
+<div id="banner"></div>
+<div id="error"></div>
+<main>
+  <section>
+    <div class="panel">
+      <div id="video">
+        <img id="stream" src="/stream.mjpg" alt="camera">
+        <div id="hud">motors 0.00 0.00 · range –</div>
+        <div id="pad">
+          <span></span><button data-k="w">▲</button><span></span>
+          <button data-k="a">◀</button><button data-k="x">■</button><button data-k="d">▶</button>
+          <span></span><button data-k="s">▼</button><span></span>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="scan">Scan</button>
+        <button class="btn" id="auto">Auto</button>
+        <button class="btn" id="recal">Recalibrate</button>
+        <button class="btn" id="mockbtn">Mock VOC spike</button>
+        <label class="speed">speed <input type="range" id="speed" min="0.2" max="1" step="0.05" value="0.6"> <span id="speedv">0.60</span></label>
+      </div>
+      <div class="row muted" style="font-size:12px">Drive: hold the pad or WASD/arrows · Space = Scan · Esc = E-STOP</div>
+    </div>
+  </section>
+  <section class="side">
+    <div class="panel" id="card">
+      <h2>Latest scan <span id="scanid" class="muted"></span></h2>
+      <div class="imgs">
+        <figure><img id="img-raw" alt=""><figcaption>raw</figcaption></figure>
+        <figure><img id="img-mask" alt=""><figcaption>plant mask</figcaption></figure>
+        <figure><img id="img-crop" alt=""><figcaption>crop → CNN</figcaption></figure>
+      </div>
+      <div id="score"><span class="n" id="health">–</span><span class="s" id="status">no scan yet</span><span id="label" class="muted"></span></div>
+      <div id="explain"></div>
+      <div class="kv" id="scankv"></div>
+    </div>
+    <div class="panel">
+      <h2>VOCs (ratio vs clean-air baseline, &gt;1 = more VOCs)</h2>
+      <div class="spark"><span>MQ-2</span><canvas id="sp-mq2"></canvas><span class="v" id="v-mq2">–</span></div>
+      <div class="spark"><span>BME680 gas</span><canvas id="sp-gas"></canvas><span class="v" id="v-gas">–</span></div>
+      <div class="kv" id="envkv"></div>
+      <div id="devices" style="margin-top:6px"></div>
+    </div>
+    <div class="panel">
+      <h2>Row</h2>
+      <div id="strip"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let ws, tele = {}, connected = false;
+const hist = { mq2: [], gas: [] };
+const HIST_N = 300; // 60 s at 5 Hz
+
+// ---------- websocket ----------
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => { connected = true; $('conn').textContent = 'online'; $('conn').className = 'badge'; };
+  ws.onclose = () => { connected = false; $('conn').textContent = 'offline'; $('conn').className = 'badge off'; setTimeout(connect, 1000); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.telemetry) onTelemetry(m.telemetry);
+    if (m.last_scan) showScan(m.last_scan);
+    if (m.scan) { showScan(m.scan); addStrip(m.scan, true); }
+    if (m.scan_progress) { $('label').textContent = `looks: ${m.scan_progress.label} (${(m.scan_progress.p_healthy*100).toFixed(0)}%) · sniffing…`; }
+  };
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+const cmd = c => send({ cmd: c });
+
+// ---------- driving ----------
+const held = new Set();
+let driveTimer = null;
+function driveVec() {
+  const sp = +$('speed').value;
+  const f = (held.has('w') ? 1 : 0) - (held.has('s') ? 1 : 0);
+  const t = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0);
+  if (f === 0) return [sp * t * 0.7, -sp * t * 0.7];       // spin in place
+  const clamp = v => Math.max(-1, Math.min(1, v));
+  return [clamp(sp * (f + 0.5 * t)), clamp(sp * (f - 0.5 * t))];
+}
+function updateDrive() {
+  if (held.size && !driveTimer) {
+    send({ drive: driveVec() });
+    driveTimer = setInterval(() => send({ drive: driveVec() }), 100);  // watchdog expects < 500 ms
+  } else if (!held.size && driveTimer) {
+    clearInterval(driveTimer); driveTimer = null;
+    send({ drive: [0, 0] });
+  }
+  document.querySelectorAll('#pad button').forEach(b => b.classList.toggle('on', held.has(b.dataset.k)));
+}
+const KEYMAP = { w: 'w', a: 'a', s: 's', d: 'd', arrowup: 'w', arrowleft: 'a', arrowdown: 's', arrowright: 'd' };
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { cmd('estop'); return; }
+  if (k === ' ' && !e.repeat) { e.preventDefault(); cmd('scan'); return; }
+  if (KEYMAP[k]) { e.preventDefault(); held.add(KEYMAP[k]); updateDrive(); }
+});
+addEventListener('keyup', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k) { held.delete(k); updateDrive(); } });
+addEventListener('blur', () => { held.clear(); updateDrive(); });
+document.querySelectorAll('#pad button').forEach(b => {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); if (k === 'x') { held.clear(); } else held.add(k); updateDrive(); });
+  const up = () => { held.delete(k); updateDrive(); };
+  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+});
+$('speed').oninput = () => $('speedv').textContent = (+$('speed').value).toFixed(2);
+
+// ---------- buttons ----------
+$('estop').onclick = () => cmd(tele.state === 'ESTOP' ? 'reset' : 'estop');
+$('scan').onclick = () => cmd('scan');
+$('auto').onclick = () => cmd(tele.mode === 'auto' ? 'auto_off' : 'auto_on');
+$('recal').onclick = () => { if (confirm('Set the VOC baseline to the current air? Do this away from plants.')) cmd('recalibrate'); };
+$('mockbtn').onclick = () => cmd('mock_spike');
+
+// ---------- telemetry ----------
+const fmt = (v, d = 2) => v == null ? '–' : (+v).toFixed(d);
+function onTelemetry(t) {
+  tele = t;
+  $('state').textContent = t.state; $('state').className = 'badge ' + t.state;
+  $('mode').textContent = t.mode + (t.mode === 'auto' ? ` · ${t.auto_scans} scans` : '');
+  $('estop').textContent = t.state === 'ESTOP' ? 'RESET' : 'E-STOP';
+  $('estop').classList.toggle('reset', t.state === 'ESTOP');
+  const idle = t.state === 'IDLE' || t.state === 'WARMUP';
+  $('scan').disabled = !idle;
+  $('auto').textContent = t.mode === 'auto' ? 'Stop auto' : 'Auto';
+  $('auto').classList.toggle('active', t.mode === 'auto');
+  $('auto').disabled = !(idle || t.mode === 'auto');
+  $('mockbtn').style.display = t.mock ? 'inline-block' : 'none';
+  $('banner').style.display = t.warm ? 'none' : 'block';
+  $('banner').textContent = `Sensors warming up… ~${Math.ceil(t.warmup_remaining_s)} s left. VOC ratios aren't meaningful yet.`;
+  $('error').style.display = t.error ? 'block' : 'none';
+  $('error').textContent = t.error || '';
+  $('hud').textContent = `motors ${fmt(t.motors[0])} ${fmt(t.motors[1])} · range ${t.range_cm == null ? '–' : t.range_cm.toFixed(0) + ' cm'} · watchdog stops ${t.watchdog_trips}`;
+  push(hist.mq2, t.ratios.mq2); push(hist.gas, t.ratios.gas);
+  $('v-mq2').textContent = fmt(t.ratios.mq2); $('v-gas').textContent = fmt(t.ratios.gas);
+  drawSpark($('sp-mq2'), hist.mq2); drawSpark($('sp-gas'), hist.gas);
+  const e = t.env;
+  $('envkv').innerHTML = `<span>MQ-2 <b>${fmt(e.mq2_v, 3)} V</b></span><span>gas <b>${e.gas_ohms == null ? '–' : (e.gas_ohms / 1000).toFixed(1) + ' kΩ'}</b></span>` +
+    `<span>temp <b>${fmt(e.temp_c, 1)} °C</b></span><span>RH <b>${fmt(e.rh, 1)} %</b></span>`;
+  $('devices').innerHTML = Object.entries(t.devices).map(([k, v]) => `<span class="${v.startsWith('ok') ? 'ok' : v === 'offline' || v.startsWith('fallback') ? 'offline' : 'mock'}">● ${k}: ${v}</span>`).join('');
+}
+function push(a, v) { a.push(v); if (a.length > HIST_N) a.shift(); }
+function drawSpark(c, data) {
+  const dpr = devicePixelRatio || 1, w = c.clientWidth * dpr, h = c.clientHeight * dpr;
+  if (c.width !== w) { c.width = w; c.height = h; }
+  const g = c.getContext('2d'); g.clearRect(0, 0, w, h);
+  const vals = data.filter(v => v != null);
+  if (!vals.length) return;
+  const lo = Math.min(0.9, ...vals), hi = Math.max(1.3, ...vals);
+  const y = v => h - (v - lo) / (hi - lo) * (h - 4) - 2;
+  g.strokeStyle = '#8a9a90'; g.setLineDash([4 * dpr, 4 * dpr]); g.lineWidth = dpr;   // baseline = 1.0
+  g.beginPath(); g.moveTo(0, y(1)); g.lineTo(w, y(1)); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = '#3fbf6f'; g.lineWidth = 1.5 * dpr; g.beginPath();
+  let started = false;
+  data.forEach((v, i) => { if (v == null) return; const x = i / (HIST_N - 1) * w; started ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); started = true; });
+  g.stroke();
+}
+
+// ---------- scans ----------
+function showScan(s) {
+  if (!s) return;
+  const bust = '?' + s.id;
+  $('img-raw').src = s.images.raw + bust; $('img-mask').src = s.images.mask + bust; $('img-crop').src = s.images.crop + bust;
+  $('scanid').textContent = s.id;
+  $('health').textContent = Math.round(s.health); $('health').className = 'n ' + s.status;
+  $('status').textContent = s.status; $('status').className = 's ' + s.status;
+  $('label').textContent = `${s.label} · ${s.backend}`;
+  $('explain').textContent = s.explain || '';
+  $('scankv').innerHTML = `<span>p_healthy <b>${fmt(s.p_healthy)}</b></span><span>MQ-2 ratio <b>${fmt(s.mq2_ratio)}</b></span>` +
+    `<span>gas ratio <b>${fmt(s.gas_ratio)}</b></span><span>RH <b>${fmt(s.rh, 1)}%</b></span>` +
+    `<span>isolation <b>${s.isolation}</b></span><span>infer <b>${fmt(s.infer_ms, 0)} ms</b></span>`;
+}
+function addStrip(s, front) {
+  const d = document.createElement('div');
+  d.className = s.status; d.textContent = Math.round(s.health); d.title = `${s.id} ${s.label} ${s.explain || ''}`;
+  d.onclick = () => fetch('/api/scans/' + s.id).then(r => r.json()).then(showScan);
+  front ? $('strip').prepend(d) : $('strip').append(d);
+}
+fetch('/api/scans?limit=40').then(r => r.json()).then(list => {
+  list.forEach(s => addStrip(s, false));
+  if (list.length && !$('scanid').textContent) fetch('/api/scans/' + list[0].id).then(r => r.json()).then(showScan);
+});
+connect();
+</script>
+</body>
+</html>
