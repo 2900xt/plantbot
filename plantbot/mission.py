@@ -163,11 +163,12 @@ class Mission:
 
         self.set_state("ANALYZE")
         pred, iso = vis["pred"], vis["iso"]
-        fused = fusion.fuse(pred.p_healthy, voc["mq2_ratio"], voc["gas_ratio"], self.r.cfg.fusion)
+        fused = fusion.fuse(pred.p_healthy, voc["mq2_ratio"], voc["gas_ratio"], self.r.cfg.fusion,
+                            diff_ratio=voc["diff_ratio"] if voc["diff_calibrated"] else None)
         rec = {
             "id": scan_id, "t": t, "mode": mode,
             "label": pred.label, "p_healthy": round(pred.p_healthy, 4), "probs": pred.probs,
-            "mq2_ratio": voc["mq2_ratio"], "gas_ratio": voc["gas_ratio"],
+            "mq2_ratio": voc["mq2_ratio"], "gas_ratio": voc["gas_ratio"], "diff_ratio": voc["diff_ratio"],
             "temp_c": voc["temp_c"], "rh": voc["rh"],
             "health": fused["health"], "status": fused["status"], "voc_stress": fused["voc_stress"],
             "explain": fused["explain"],
@@ -241,6 +242,7 @@ class Mission:
             "state": self.state, "mode": self.mode, "mock": bool(self.r.cfg.mock_mode),
             "warm": s.warm, "warmup_remaining_s": round(s.warmup_remaining(), 1),
             "env": env, "ratios": s.ratios(), "baseline": base,
+            "diff_calibrated": s.crosscal.calibrated, "plant_sensor": s.plant_sensor,
             "range_cm": None if self.range_cm is None else round(self.range_cm, 1),
             "motors": [round(self.r.motors.left, 2), round(self.r.motors.right, 2)],
             "watchdog_trips": self.r.motors.watchdog_trips,

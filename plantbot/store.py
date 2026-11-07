@@ -11,7 +11,7 @@ import time
 import cv2
 
 COLS = ["id", "t", "mode", "label", "p_healthy", "mq2_ratio", "gas_ratio", "temp_c", "rh",
-        "health", "status", "isolation", "infer_ms", "backend"]
+        "health", "status", "isolation", "infer_ms", "backend", "diff_ratio"]
 
 
 class Store:
@@ -23,7 +23,10 @@ class Store:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, t REAL, mode TEXT, label TEXT, "
             "p_healthy REAL, mq2_ratio REAL, gas_ratio REAL, temp_c REAL, rh REAL, health REAL, "
-            "status TEXT, isolation TEXT, infer_ms REAL, backend TEXT)")
+            "status TEXT, isolation TEXT, infer_ms REAL, backend TEXT, diff_ratio REAL)")
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(scans)")}
+        if "diff_ratio" not in have:  # scans.db from before the differential existed
+            self.db.execute("ALTER TABLE scans ADD COLUMN diff_ratio REAL")
         self.db.commit()
 
     @staticmethod

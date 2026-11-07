@@ -80,6 +80,13 @@ sensing:
   sniff_settle_s: 2.0          # fan on, wait for air to arrive
   sniff_window_s: 6.0          # then average this long
   csv_hz: 1
+  # Plant-vs-background VOC differential. Rover v3: MQ-2 at the front (at the plant),
+  # BME680 at the rear (background). The MQ-2 is mapped onto the BME680's scale with a
+  # fit from tools/crosscal.py; until that file exists, an identity map is used and the
+  # health score falls back to the plain ratios.
+  differential:
+    plant_sensor: mq2          # mq2 | bme680: which sensor faces the plant
+    calibration: calibration/crosscal.json
 
 vision:
   work_width: 640              # isolate runs on a downscaled copy
@@ -111,6 +118,7 @@ fusion:
   w_img: 0.7
   w_voc: 0.3
   voc_full_scale: 0.5
+  voc_mode: differential       # differential (plant minus background, needs crosscal) | ratios
   healthy_min: 70
   watch_min: 40
 
@@ -132,10 +140,12 @@ mock:
   camera: folder               # folder | opencv  (--camera overrides)
   camera_folder: test_images
   warmup_s: 5
-  # Scripted VOC events, seconds after start: mq2_dv adds volts, gas_scale multiplies resistance
+  # Scripted VOC events, seconds after start: mq2_dv adds volts, gas_scale multiplies resistance.
+  # The scripted event is room-wide (both sensors move, differential stays near 1); the
+  # button is a plant-local smell (front MQ-2 moves more than rear BME680, differential rises).
   env_script:
     - {t: 40, duration: 12, mq2_dv: 0.35, gas_scale: 0.6}
   # Dashboard "Mock VOC spike" button uses these
-  spike: {duration: 12, mq2_dv: 0.4, gas_scale: 0.55}
+  spike: {duration: 12, mq2_dv: 0.4, gas_scale: 0.85}
   plant_spacing_cm: 60         # MockRanger: plants along a virtual row
   speed_cm_s: 30               # MockRanger: cm/s at drive(1, 1)

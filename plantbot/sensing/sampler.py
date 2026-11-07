@@ -1,4 +1,4 @@
-"""Background sensor thread: ring buffer, smoothing, warm-up detection, baseline, sniff()."""
+"""Background sensor thread: ring buffer, smoothing, warm-up detection, baseline, differential, sniff()."""
 from __future__ import annotations
 
 import collections
@@ -10,6 +10,7 @@ import threading
 import time
 
 from plantbot.hal.env import EnvReading, mq2_rs_kohm
+from plantbot.sensing.crosscal import CrossCal, differential, log_ratio
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,9 @@ class Sampler:
         self.warm = False
         self._stable_since: float | None = None
         self.csv_path = csv_path
+        diff_cfg = cfg.get("differential")
+        self.plant_sensor = diff_cfg.plant_sensor if diff_cfg else "mq2"
+        self.crosscal = CrossCal.load(diff_cfg.calibration if diff_cfg else None)
         self._running = True
         threading.Thread(target=self._loop, name="sampler", daemon=True).start()
 
@@ -49,14 +53,21 @@ class Sampler:
         return mq2_rs_kohm(mq2_v, self.mq2_cfg.vc, self.mq2_cfg.rl_kohm)
 
     def ratios(self, mq2_v=None, gas=None) -> dict:
-        """mq2 = rs_base / rs_now, gas = gas_base / gas_now. >1 means more VOCs."""
+        """mq2 = rs_base / rs_now, gas = gas_base / gas_now. >1 means more VOCs.
+
+        diff = exp(plant-side minus background log ratio, in BME680 units), so it reads like
+        the other two: >1 means the plant side smells more than the background.
+        """
         with self.lock:
             mq2_v = self.smooth["mq2_v"] if mq2_v is None else mq2_v
             gas = self.smooth["gas_ohms"] if gas is None else gas
             rs = self.rs(mq2_v)
+            d = differential(log_ratio(self.base_rs, rs), log_ratio(self.base_gas, gas),
+                             self.crosscal, self.plant_sensor)
             return {
                 "mq2": self.base_rs / rs if rs and self.base_rs else None,
                 "gas": self.base_gas / gas if _ok(gas) and self.base_gas else None,
+                "diff": None if d is None else math.exp(d),
             }
 
     def warmup_remaining(self) -> float:
@@ -178,9 +189,10 @@ class Sampler:
             return sum(vals) / len(vals) if vals else None
 
         out = {k: mean(k) for k in ("mq2_v", "gas_ohms", "temp_c", "rh", "pressure_hpa")}
-        rt = self.ratios(out["mq2_v"], out["gas_ohms"]) if rs else {"mq2": None, "gas": None}
-        out.update(mq2_ratio=rt["mq2"], gas_ratio=rt["gas"], n=len(rs), window_s=window,
-                   baseline_ready=self.warm)
+        rt = self.ratios(out["mq2_v"], out["gas_ohms"]) if rs else {"mq2": None, "gas": None, "diff": None}
+        out.update(mq2_ratio=rt["mq2"], gas_ratio=rt["gas"], diff_ratio=rt["diff"],
+                   diff_calibrated=self.crosscal.calibrated, plant_sensor=self.plant_sensor,
+                   n=len(rs), window_s=window, baseline_ready=self.warm)
         return out
 
     def close(self) -> None:

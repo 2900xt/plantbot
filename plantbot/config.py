@@ -50,8 +50,12 @@ def load(path: str | Path | None = None, mock: bool = False, camera: str | None 
         cfg.camera.driver = camera
     # Relative paths are relative to the repo root, so systemd/cwd don't matter.
     for section, key in (("store", "dir"), ("classifier", "model"), ("classifier", "labels"),
-                         ("mock", "camera_folder")):
-        sec = getattr(cfg, section)
+                         ("mock", "camera_folder"), ("sensing.differential", "calibration")):
+        sec = cfg
+        for part in section.split("."):
+            sec = sec.get(part)
+        if sec is None:
+            continue
         p = Path(getattr(sec, key))
         setattr(sec, key, str(p if p.is_absolute() else ROOT / p))
     return cfg

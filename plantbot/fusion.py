@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 
-def fuse(p_healthy: float, mq2_ratio: float | None, gas_ratio: float | None, cfg) -> dict:
-    deltas = [r - 1.0 for r in (mq2_ratio, gas_ratio) if r is not None]
+def fuse(p_healthy: float, mq2_ratio: float | None, gas_ratio: float | None, cfg,
+         diff_ratio: float | None = None) -> dict:
+    """diff_ratio: plant-vs-background ratio (calibrated scans only). When present and
+    voc_mode is "differential", it replaces the plain ratios, so VOCs the background
+    sensor also smells (dead leaves, the room) don't count against the plant."""
+    use_diff = cfg.get("voc_mode", "ratios") == "differential" and diff_ratio is not None
+    deltas = [diff_ratio - 1.0] if use_diff else [r - 1.0 for r in (mq2_ratio, gas_ratio) if r is not None]
     voc_stress = min(1.0, max(0.0, max(deltas) / cfg.voc_full_scale)) if deltas else None
     if voc_stress is None:
         # No VOC data: score on the image alone rather than pretending the air is clean.
@@ -19,6 +24,8 @@ def fuse(p_healthy: float, mq2_ratio: float | None, gas_ratio: float | None, cfg
         smell = "slightly elevated VOCs"
     else:
         smell = "elevated VOCs"
+    if use_diff and voc_stress is not None:
+        smell += " vs background"
     return {
         "health": round(health, 1),
         "status": status,
