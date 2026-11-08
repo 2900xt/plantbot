@@ -139,6 +139,17 @@ mission:
 store:
   dir: scans
 
+leaflink:
+  # LeafLink server (GPU laptop: real leaf model + field map). URL and token come from the
+  # environment, LEAFLINK_URL and LEAFLINK_TOKEN (on the Pi: ~/plantbot/.env). Unset = off.
+  enabled: true
+  device: rover-1              # LeafLink device id: scans and VOC samples are grouped by it
+  voc_hz: 1                    # VOC samples per second sent as top (plant side) / bottom (background)
+  flush_s: 3                   # batch VOC uploads this often
+  timeout_s: 10
+  lat: null                    # optional fixed field position; no GPS on the rover
+  lon: null
+
 mock:
   camera: folder               # folder | opencv  (--camera overrides)
   camera_folder: test_images

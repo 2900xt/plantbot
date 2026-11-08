@@ -61,6 +61,18 @@ On the Pi (`ssh taha@vittles.local`, `cd ~/plantbot`):
 2. Edit `config.yaml` **locally** and redeploy: `motors.driver`, pins, `camera.driver`, `env.bme680_address`, `env.mq2.rl_kohm` (measure the module's load resistor).
 3. `sudo systemctl stop plantbot && .venv/bin/python tools/hw_check.py`: every check should PASS. Flip `invert_left/right` if a wheel spins backwards. Stop the service first, because it holds the camera and GPIO; `sudo systemctl start plantbot` after.
 
+## LeafLink (leaf model + field map + Rover tab)
+
+The real leaf model and the team dashboard run in LeafLink (`../LeafLink`) on the RTX 3050 laptop. The rover sends it every scan photo (`POST /api/captures`, device `rover-1`) and a 1 Hz VOC stream (`POST /api/telemetry/voc`, top = plant-side sensor, bottom = background, as `100 * ln(baseline/now)` in BME680 units). LeafLink's Rover tab drives the rover directly over `ws://vittles.local:8000/ws`.
+
+Turn the uplink on by putting the LeafLink address and API token in `~/plantbot/.env` on the Pi (never in git; deploys don't touch it):
+
+```bash
+ssh taha@vittles.local 'printf "LEAFLINK_URL=http://<gpu-laptop>.local:8080\nLEAFLINK_TOKEN=<token>\n" > ~/plantbot/.env && sudo systemctl restart plantbot'
+```
+
+The Rover tab shows "Uplink to LeafLink: sending as rover-1" when it works. With no `.env` the rover runs exactly as before. Settings are in `config.yaml` → `leaflink`.
+
 ## Plugging in the model (ML is owned by a teammate)
 
 This repo doesn't train anything. To plug a model in, drop it in `models/` and set `classifier.backend`:

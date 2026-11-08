@@ -4,5 +4,5 @@ Rover software for our MakeCU 2026 Pi plant-health rover. The design lives in th
 
 - Run on a laptop with `python -m plantbot --mock`. Keep mock mode working: teammates without the Pi depend on it.
 - Hardware choices (pins, drivers, I2C addresses, thresholds) go in `config.yaml`, not in code.
-- **Always commit and push.** After any change, commit it in small, logical commits (one idea each, clear message) and push to `origin` right away. Teammates pull from GitHub, and the Pi deploys with `git pull`; unpushed work doesn't exist for them.
+- **Always commit and push.** After any change, commit it in small, logical commits (one idea each, clear message) and push to `origin` right away. Teammates pull from GitHub; unpushed work doesn't exist for them. Deploy to the Pi with `./deploy.sh` (rsync over SSH, see README).
 - Keep credentials, Wi-Fi passwords, and API keys out of this repo.

@@ -12,6 +12,8 @@ Restart=always
 RestartSec=2
 TimeoutStopSec=10
 Environment=PYTHONUNBUFFERED=1
+# LEAFLINK_URL / LEAFLINK_TOKEN live here, outside git
+EnvironmentFile=-@DIR@/.env
 
 [Install]
 WantedBy=multi-user.target

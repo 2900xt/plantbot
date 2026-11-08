@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -35,9 +36,12 @@ class Robot:
     classifier: Any
     store: Any
     devices: dict = field(default_factory=dict)
+    leaflink: Any = None
 
     def close(self) -> None:
-        for d in (self.motors, self.camera, self.sampler):
+        for d in (self.motors, self.camera, self.sampler, self.leaflink):
+            if d is None:
+                continue
             try:
                 d.close()
             except Exception:
@@ -180,6 +184,8 @@ class Mission:
         self.set_state("REPORT")
         rec = await asyncio.to_thread(self.r.store.save, rec, vis["raw"], iso.mask_vis, iso.crop)
         self.last_scan = rec
+        if self.r.leaflink:
+            self.r.leaflink.submit_scan(scan_id, os.path.join(self.r.store.root, scan_id, "raw.jpg"), t)
         log.info("scan %s: %s %.0f (%s)", scan_id, rec["status"], rec["health"], rec["explain"])
         await self.broadcast({"scan": rec})
         return rec
@@ -248,5 +254,6 @@ class Mission:
             "motors": [round(self.r.motors.left, 2), round(self.r.motors.right, 2)],
             "watchdog_trips": self.r.motors.watchdog_trips,
             "devices": self.r.devices, "error": self.error, "auto_scans": self.auto_scans,
+            "leaflink": self.r.leaflink.status() if self.r.leaflink else None,
             "t": time.time(),
         }

@@ -26,7 +26,12 @@ def build_robot(cfg):
     f, devices["fan"] = fan.make(cfg.fan)
     clf, devices["classifier"] = classify.make(cfg.classifier)
     sampler = Sampler(e, cfg.sensing, cfg.env.mq2, csv_path=os.path.join(cfg.store.dir, "sensors.csv"))
-    return Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices)
+    from plantbot.leaflink import LeafLink
+
+    ll = LeafLink(cfg.get("leaflink") or config.Cfg(), sampler)
+    devices["leaflink"] = "ok" if ll.enabled else "disabled"
+    ll.start()
+    return Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices, ll)
 
 
 def _ips() -> list[str]:

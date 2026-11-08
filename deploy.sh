@@ -20,7 +20,7 @@ echo "== sync -> $PI:~/$DIR"
 rsync -az --delete --itemize-changes --stats --human-readable \
   --exclude .git/ --exclude .venv/ --exclude __pycache__/ --exclude '*.pyc' \
   --exclude scans/ --exclude dataset/ --exclude hw_check.jpg \
-  --exclude 'calibration/crosscal.json' \
+  --exclude 'calibration/crosscal.json' --exclude .env \
   ./ "$PI:$DIR/"
 # models/*.tflite|onnx are gitignored but still synced if present locally.
 

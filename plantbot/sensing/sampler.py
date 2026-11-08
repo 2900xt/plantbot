@@ -70,6 +70,14 @@ class Sampler:
                 "diff": None if d is None else math.exp(d),
             }
 
+    def voc_pair(self) -> tuple[float | None, float | None]:
+        """(plant side, background) as ln(baseline / now) in BME680 units. Both rise with VOCs."""
+        with self.lock:
+            lr_mq2 = log_ratio(self.base_rs, self.rs(self.smooth["mq2_v"]))
+            lr_bme = log_ratio(self.base_gas, self.smooth["gas_ohms"])
+        mq2_on_bme = self.crosscal.mq2_to_bme(lr_mq2)
+        return (mq2_on_bme, lr_bme) if self.plant_sensor == "mq2" else (lr_bme, mq2_on_bme)
+
     def warmup_remaining(self) -> float:
         if self.warm:
             return 0.0
