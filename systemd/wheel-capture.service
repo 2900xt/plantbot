@@ -1,0 +1,21 @@
+[Unit]
+Description=plantbot photo capture (mouse wheel toggles 1 photo/s into Pictures_Test/)
+After=multi-user.target
+# Both want the camera and the mouse (plantbot grabs it), so only one runs at a time.
+Conflicts=plantbot.service
+
+[Service]
+# @USER@ and @DIR@ get filled in on install, e.g.:
+#   sed -e "s|@USER@|$(id -un)|g" -e "s|@DIR@|$HOME/plantbot|g" systemd/wheel-capture.service \
+#     | sudo tee /etc/systemd/system/wheel-capture.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now wheel-capture
+# Logs: journalctl -u wheel-capture -f
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/.venv/bin/python tools/wheel_capture.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
