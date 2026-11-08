@@ -35,6 +35,7 @@ export function createApp(c, pipeline) {
   app.post('/api/telemetry/voc', (req,res)=>res.status(202).json(pipeline.field.ingest(req.body)));
   app.post('/api/telemetry/location', (req,res)=>res.status(202).json(pipeline.field.ingestLocation(req.body)));
   app.post('/api/telemetry/gas', (req,res)=>res.status(202).json(pipeline.field.ingestGas(req.body)));
+  app.post('/api/telemetry/drift', (req,res)=>res.status(202).json(pipeline.field.ingestDrift(req.body)));
   app.post('/api/telemetry/reset', (req,res)=>res.json(pipeline.field.resetBaseline(req.body?.device)));
   app.get('/api/config', (req,res) => res.json({ storage: c.driver, model: c.modelMode, leaf_extraction:c.leafMode, ground_mask:c.groundMode,
     binary_triage:c.binaryTriage && !['experts','segmented'].includes(c.modelMode), binary_policy:c.modelMode==='segmented'?{kind:'winning_class_healthy_suffix'}:c.modelMode==='experts'?{kind:'selected_expert_sigmoid',disease_threshold:.5}:c.binaryTriage?{disease_threshold:c.binaryDiseaseThreshold,provisional:true}:null }));

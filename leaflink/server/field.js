@@ -34,6 +34,8 @@ export function createFieldStore(db, now=Date.now) {
     CREATE TABLE IF NOT EXISTS field_samples (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL, UNIQUE(device,id));
     CREATE TABLE IF NOT EXISTS field_gas (sequence INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS field_gas_device ON field_gas(device,sequence);
+    CREATE TABLE IF NOT EXISTS field_drift (sequence INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS field_drift_device ON field_drift(device,sequence);
     CREATE TABLE IF NOT EXISTS field_sensor_state (device TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_events (id TEXT PRIMARY KEY, kind TEXT NOT NULL, capture_id TEXT UNIQUE, created TEXT NOT NULL, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_cache (event_id TEXT PRIMARY KEY, expires INTEGER NOT NULL, image BLOB NOT NULL);
@@ -199,6 +201,44 @@ export function createFieldStore(db, now=Date.now) {
       db.exec('DELETE FROM field_gas WHERE sequence < (SELECT COALESCE(MAX(sequence),0)-9999 FROM field_gas)');
       return sample;
     },
+    // VOC drift detector snapshots from the rover (plantbot/sensing/voc_drift.py). The rover does the
+    // statistics (calibrated mean/std dev per sensor, z-scores, CUSUM); we store and display them, and
+    // log one VOC event each time a device enters "diseased".
+    ingestDrift(input) {
+      const batch=Array.isArray(input)?input:[input];
+      if(!batch.length||batch.length>500) fail('Send 1–500 drift snapshots per request');
+      const statuses=['waiting','calibrating','healthy','watch','diseased'];
+      const n=(v,name)=>{if(v==null)return null;if(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>1e9)fail(`${name} must be a finite number or null`);return v;};
+      const results=[];
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        for(const raw of batch) {
+          if(!raw||typeof raw!=='object') fail('Each drift snapshot must be an object');
+          const device=deviceName(raw.device),measured_at=timestamp(raw.measured_at),received_at=new Date(now()).toISOString();
+          if(!statuses.includes(raw.status)) fail(`status must be one of ${statuses.join(', ')}`);
+          const sensors={};
+          for(const [name,v] of Object.entries(raw.sensors||{})) {
+            if(!['mq2','bme'].includes(name)||!v||typeof v!=='object') fail('sensors may only hold mq2 and bme objects');
+            sensors[name]={z:n(v.z,'z'),z_ewma:n(v.z_ewma,'z_ewma'),cusum:n(v.cusum,'cusum'),slope_per_min:n(v.slope_per_min,'slope_per_min')};
+          }
+          const th=raw.thresholds||{};
+          const sample={device,measured_at,received_at,status:raw.status,z:n(raw.z,'z'),cusum:n(raw.cusum,'cusum'),stress:n(raw.stress,'stress'),
+            confidence:['high','low'].includes(raw.confidence)?raw.confidence:null,calib_progress:n(raw.calib_progress,'calib_progress'),
+            explain:typeof raw.explain==='string'?raw.explain.slice(0,200):'',sensors,
+            thresholds:{z_watch:n(th.z_watch,'z_watch'),z_alarm:n(th.z_alarm,'z_alarm'),cusum_h:n(th.cusum_h,'cusum_h')},
+            location:location(raw.location)||latestLocation(device,measured_at)};
+          const previous=db.prepare('SELECT measured_at,body FROM field_drift WHERE device=? ORDER BY sequence DESC LIMIT 1').get(device);
+          if(previous&&measured_at<=previous.measured_at) {results.push({device,measured_at,duplicate:true});continue;}
+          if(sample.status==='diseased'&&(!previous||JSON.parse(previous.body).status!=='diseased'))
+            sample.event_id=insertEvent('voc',{device,location:sample.location,measured_at,source:'drift',top_change:sample.z,
+              difference_change:sample.cusum,units:'σ drift',explain:sample.explain,sensors,simulated:false});
+          db.prepare('INSERT INTO field_drift(device,measured_at,received_at,body) VALUES (?,?,?,?)').run(device,measured_at,received_at,JSON.stringify(sample));
+          results.push(sample);
+        }
+        db.exec('DELETE FROM field_drift WHERE sequence < (SELECT COALESCE(MAX(sequence),0)-19999 FROM field_drift)');
+        db.exec('COMMIT');return results;
+      } catch(error) {db.exec('ROLLBACK');throw error;}
+    },
     resetBaseline(device) {deviceName(device);db.prepare('DELETE FROM field_sensor_state WHERE device=?').run(device);return {device,reset:true};},
     events() {purge();return db.prepare('SELECT * FROM field_events ORDER BY created DESC,rowid DESC LIMIT 500').all().map(publicEvent);},
     eventImage(id) {purge();return db.prepare('SELECT image FROM field_cache WHERE event_id=?').get(id)?.image || null;},
@@ -224,6 +264,7 @@ export function createFieldStore(db, now=Date.now) {
         locations:db.prepare('SELECT * FROM field_locations ORDER BY received_at DESC LIMIT 100').all().map(r=>({...r,location:JSON.parse(r.body),body:undefined})),
         location_history:db.prepare('SELECT device,measured_at,received_at,body FROM field_location_samples ORDER BY sequence DESC LIMIT 100').all().map(r=>({...r,location:JSON.parse(r.body),body:undefined})),
         gas:db.prepare('SELECT body FROM field_gas ORDER BY sequence DESC LIMIT 50').all().map(r=>JSON.parse(r.body)),
+        drift:db.prepare('SELECT body FROM field_drift ORDER BY sequence DESC LIMIT 180').all().map(r=>JSON.parse(r.body)),
         samples:db.prepare('SELECT body FROM field_samples ORDER BY sequence DESC LIMIT 100').all().map(r=>{const {signature,...sample}=JSON.parse(r.body);return sample;})};
     }
   };

@@ -32,3 +32,20 @@
 .gas-rising{border-color:#d9a400}.gas-rising .gas-bar i{background:#d9a400}
 .gas-alert{border-color:#c62828;background:#fdecea}.gas-alert .gas-bar i{background:#c62828}.gas-alert .gas-head strong{color:#c62828}
 .gas-idle .gas-head strong{color:#777}
+/* VOC drift card (rover std-dev drift detector via POST /api/telemetry/drift) */
+.drift-card{border:1px solid #c9c2b0;border-radius:10px;padding:12px;margin-bottom:12px;background:#fffdf7}
+.drift-rows{display:grid;gap:6px;margin:4px 0 8px}
+.drift-row{display:grid;grid-template-columns:52px 1fr 92px;align-items:center;gap:8px;font-size:.78rem}
+.drift-row output{text-align:right;font-variant-numeric:tabular-nums;color:#444}
+.drift-bar{position:relative;height:8px;background:#e8e3d4;border-radius:4px;overflow:hidden}
+.drift-bar i{display:block;height:100%;width:0;background:#4a7c3a;transition:width .3s,background .3s}
+.drift-bar b{position:absolute;top:0;bottom:0;width:2px;background:#222;opacity:.35}
+.drift-bar b.drift-alarm{opacity:.8}
+.drift-bar i.z-watch{background:#d9a400}.drift-bar i.z-alarm{background:#c62828}
+.drift-spark{display:block;width:100%;height:48px;background:#f6f2e6;border-radius:6px}
+.drift-spark .lim{stroke:#999;stroke-width:.6;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.drift-spark .lim.alarm{stroke:#c62828}
+.drift-spark polyline{fill:none;stroke:#4a7c3a;stroke-width:1.6;vector-effect:non-scaling-stroke}
+.drift-watch-state{border-color:#d9a400}.drift-watch-state .drift-spark polyline{stroke:#b38700}
+.drift-diseased{border-color:#c62828;background:#fdecea}.drift-diseased .gas-head strong{color:#c62828}.drift-diseased .drift-spark polyline{stroke:#c62828}
+.drift-idle .gas-head strong,.drift-calibrating .gas-head strong{color:#777}

@@ -2,6 +2,8 @@
 
 Two jobs, both in one background thread so a slow or missing server never stalls the rover:
 - each scan's raw photo goes to POST /api/captures (Idempotency-Key = scan id, so retries are safe)
+- VOC drift detector snapshots (sensing/voc_drift.py: z-scores, CUSUM, verdict) go to
+  POST /api/telemetry/drift in batches, for the dashboard's "VOC drift" card.
 - VOC samples go to POST /api/telemetry/voc in batches. top = plant-side sensor, bottom = background
   sensor, both as 100 * ln(baseline / now) in BME680 units (cross-calibrated): roughly "% change",
   both rise with VOCs, and LeafLink's default rules (top +10, top minus bottom +5) read as
@@ -41,6 +43,7 @@ class LeafLink:
         loc = (cfg.get("lat"), cfg.get("lon"))
         self.location = {"lat": loc[0], "lon": loc[1]} if None not in loc else None
         self.voc: collections.deque = collections.deque(maxlen=500)  # unsent samples; oldest dropped
+        self.drift: collections.deque = collections.deque(maxlen=300)  # unsent VOC drift snapshots
         self.scans: collections.deque = collections.deque(maxlen=50)  # (scan_id, path, t)
         self.ok: bool | None = None
         self.last_error: str | None = None
@@ -83,13 +86,17 @@ class LeafLink:
                 self._sample(now)
             if self.scans:
                 self._send_scan(*self.scans[0])
-            if self.voc and now - last_flush >= flush_s:
+            if (self.voc or self.drift) and now - last_flush >= flush_s:
                 last_flush = now
-                self._send_voc()
+                if self.voc:
+                    self._send_voc()
+                if self.drift:
+                    self._send_drift()
             self._wake.wait(min(period, 0.5))
             self._wake.clear()
 
     def _sample(self, t: float) -> None:
+        self._sample_drift(t)
         if not self.sampler.warm:
             return  # LeafLink fixes its reference from the first sample: don't feed it warm-up drift
         top, bottom = self.sampler.voc_pair()
@@ -100,6 +107,36 @@ class LeafLink:
         if self.location:
             s["location"] = self.location
         self.voc.append(s)
+
+    def _sample_drift(self, t: float) -> None:
+        d = getattr(self.sampler, "drift", None)
+        st = d.last if d else None
+        if not st or st["status"] == "no_data":
+            return
+        keep = ("z", "z_ewma", "cusum", "slope_per_min")
+        snap = {k: st[k] for k in ("status", "z", "cusum", "stress", "confidence", "calib_progress", "explain")}
+        snap.update(measured_at=_iso(t), device=self.device, thresholds=st["thresholds"],
+                    sensors={n: {k: v[k] for k in keep} for n, v in st["sensors"].items() if v["calibrated"]})
+        if self.location:
+            snap["location"] = self.location
+        self.drift.append(snap)
+
+    def _send_drift(self) -> None:
+        batch = list(self.drift)
+        try:
+            self._post_json("/api/telemetry/drift", batch)
+        except urllib.error.HTTPError as e:
+            if e.code < 500 and e.code != 429:
+                for _ in batch:
+                    self.drift.popleft()
+            self._fail(f"drift upload HTTP {e.code}: {e.read()[:200].decode(errors='replace')}")
+            return
+        except Exception as e:
+            self._fail(f"drift upload failed: {e}")
+            return
+        for _ in batch:
+            self.drift.popleft()
+        self._good()
 
     def _send_voc(self) -> None:
         batch = list(self.voc)

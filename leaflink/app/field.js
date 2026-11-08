@@ -59,7 +59,7 @@ async function refresh(){
     if(current!==generation)return;
     [field,events,captures]=results;settings=field.settings;
     $('status').textContent='Connected';$('status').classList.add('online');$('last-sync').textContent=`Last sync ${new Date().toLocaleTimeString()}`;
-    renderGrid();renderEvents();renderCaptures();renderSensors();renderGas();
+    renderGrid();renderEvents();renderCaptures();renderSensors();renderGas();renderDrift();
     if(selected)await renderDetail();
   }catch(error){if(current===generation){$('status').textContent='Connection lost';$('status').classList.remove('online');notice(`${error.message}. Data shown may be stale; retry or reconnect.`,true);}}
   finally{busy=false;}
@@ -219,6 +219,38 @@ function renderGas(){
   const pct=g.value!=null&&g.threshold>0?Math.min(100,100*g.value/(g.threshold*1.5)):g.alarm?100:0;
   $('gas-fill').style.width=pct+'%';
   $('gas-detail').textContent=`${g.device} · threshold ${num(g.threshold)} · ${g.consecutive}/${g.hold} in a row · ${new Date(g.measured_at).toLocaleTimeString()}`;
+}
+function renderDrift(){
+  const card=$('drift-card');if(!card)return;
+  const all=field?.drift||[],d=all[0];
+  const setBar=(name,v,th)=>{
+    const fill=$(`drift-${name}-fill`),out=$(`drift-${name}`),full=(th.z_alarm||3)*1.5;
+    for(const [cls,z] of [['drift-watch',th.z_watch||2],['drift-alarm',th.z_alarm||3]])fill.parentElement.querySelector('.'+cls).style.left=`${100*z/full}%`;
+    if(!v||v.z_ewma==null){fill.style.width='0%';fill.className='';out.textContent='—';return;}
+    fill.style.width=`${Math.max(0,Math.min(100,100*v.z_ewma/full))}%`;
+    fill.className=v.z_ewma>=(th.z_alarm||3)?'z-alarm':v.z_ewma>=(th.z_watch||2)?'z-watch':'';
+    const sl=v.slope_per_min!=null&&Math.abs(v.slope_per_min)>=.05?` ${v.slope_per_min>0?'↑':'↓'}`:'';
+    out.textContent=`${v.z_ewma>=0?'+':''}${v.z_ewma.toFixed(1)}σ${sl} · S ${v.cusum.toFixed(1)}`;
+  };
+  if(!d){card.className='drift-card drift-idle';$('drift-status').textContent='No data';$('drift-verdict').textContent='Waiting for rover…';
+    setBar('mq2',null,{});setBar('bme',null,{});$('drift-spark').innerHTML='';$('drift-detail').textContent='Calibrates on healthy air after warm-up.';return;}
+  const stale=Date.now()-Date.parse(d.measured_at)>30000,th=d.thresholds||{};
+  card.className='drift-card '+(stale?'drift-idle':d.status==='watch'?'drift-watch-state':'drift-'+d.status);
+  $('drift-status').textContent=stale?'Offline':{waiting:'Warming up',calibrating:'Calibrating',healthy:'Healthy',watch:'Watch',diseased:'DISEASE?'}[d.status]||d.status;
+  $('drift-verdict').textContent=d.status==='calibrating'?`Learning healthy air… ${Math.round(100*(d.calib_progress||0))}%`:
+    d.status==='waiting'?'Sensors warming up':d.status==='diseased'?`Likely diseased · stress ${num(d.stress)}`:
+    d.status==='watch'?`Drifting · stress ${num(d.stress)}`:`Plant air normal · stress ${num(d.stress??0)}`;
+  setBar('mq2',d.sensors?.mq2,th);setBar('bme',d.sensors?.bme,th);
+  // Sparkline: fused z over the latest snapshots from this device, oldest left.
+  // Only the current detection run: stop at the latest (re)calibration.
+  const pts=[];for(const x of all){if(x.device!==d.device)continue;if(!['healthy','watch','diseased'].includes(x.status))break;if(x.z!=null)pts.push(x);}
+  pts.reverse();
+  const top=Math.max((th.z_alarm||3)*1.5,...pts.map(p=>p.z)),bot=Math.min(-1,...pts.map(p=>p.z));
+  const y=z=>(48-48*(z-bot)/(top-bot)).toFixed(1);
+  const t0=pts.length?Date.parse(pts[0].measured_at):0,span=pts.length>1?Math.max(1,Date.parse(pts.at(-1).measured_at)-t0):1;
+  const line=pts.map(p=>`${(200*(Date.parse(p.measured_at)-t0)/span).toFixed(1)},${y(p.z)}`).join(' ');
+  $('drift-spark').innerHTML=`<line class="lim" x1="0" x2="200" y1="${y(th.z_watch||2)}" y2="${y(th.z_watch||2)}"/><line class="lim alarm" x1="0" x2="200" y1="${y(th.z_alarm||3)}" y2="${y(th.z_alarm||3)}"/>${pts.length>1?`<polyline points="${line}"/>`:''}`;
+  $('drift-detail').textContent=`${d.device} · ${d.confidence==='low'?'one sensor only · ':''}CUSUM ${d.cusum!=null?d.cusum.toFixed(1):'—'}/${num(th.cusum_h??8)} · ${new Date(d.measured_at).toLocaleTimeString()}`;
 }
 function renderSensors(){
   const samples=field?.samples||[],latest=samples[0];$('sensor-summary').textContent=latest?`${latest.device} · top ${num(latest.top)}, bottom ${num(latest.bottom)} ${latest.units} · ${latest.consecutive}/${settings.voc_hold} hold`:'No measurements received.';
