@@ -3,7 +3,6 @@
     from plantbot.web.gemini_routes import install_gemini
     install_gemini(app, mission)      # after `mission.broadcast = broadcast`
 
-GET  /gemini                         the Plant Doctor + command page (static/gemini.html)
 GET  /api/gemini/status              doctor + commander status
 GET  /api/gemini/doctor/latest       newest scan + its diagnosis (runs Gemini if not cached yet)
 GET  /api/gemini/doctor/{id}?refresh=1
@@ -19,16 +18,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from pathlib import Path
 
 from fastapi import Body, HTTPException
-from fastapi.responses import FileResponse
 
 from plantbot.integrations.gemini import PlantDoctor
 from plantbot.integrations.gemini_command import Commander
 
 log = logging.getLogger(__name__)
-STATIC = Path(__file__).parent / "static"
 MAX_AUDIO_B = 2_000_000  # ~1 min of opus; Gemini inline data limit is far above this
 
 
@@ -57,10 +53,6 @@ def install_gemini(app, mission) -> tuple[PlantDoctor, Commander]:
             t.add_done_callback(pending.discard)
 
     mission.broadcast = broadcast
-
-    @app.get("/gemini")
-    async def gemini_page():
-        return FileResponse(STATIC / "gemini.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/gemini/status")
     async def gemini_status():

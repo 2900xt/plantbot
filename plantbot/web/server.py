@@ -6,14 +6,12 @@ import json
 import logging
 import math
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 log = logging.getLogger(__name__)
-STATIC = Path(__file__).parent / "static"
 
 
 def _clean(o):
@@ -66,7 +64,8 @@ def make_app(mission) -> FastAPI:
 
     @app.get("/")
     async def index():
-        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        # No dashboard here any more: drive the rover from LeafLink's Rover tab.
+        return {"plantbot": "ok", "ui": "LeafLink Rover tab", "ws": "/ws", "stream": "/stream.mjpg"}
 
     @app.get("/stream.mjpg")
     async def stream():

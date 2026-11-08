@@ -10,7 +10,7 @@ uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt   
 .venv/bin/python -m plantbot --mock
 ```
 
-Open http://localhost:8000/. In mock mode every device is fake:
+The rover has no UI of its own: open LeafLink's **Rover** tab and point it at `http://localhost:8000` (see `leaflink/ROVER.md`). In mock mode every device is fake:
 
 | Device | Mock |
 |---|---|
@@ -20,9 +20,9 @@ Open http://localhost:8000/. In mock mode every device is fake:
 | Ultrasonic | `MockRanger`: a virtual row of plants every 60 cm, so AUTO mode works |
 | Classifier | `dummy` heuristic (share of yellow/brown pixels). A stand-in until the real model arrives. |
 
-Try it: press **Scan** (or Space) for a normal plant; press **Mock VOC spike**, wait 3 s, then Scan, and the score drops on the smell term. Drive with WASD or the pad; let go, or close the tab, and the watchdog stops the motors within 0.5 s.
+Drive with WASD in the Rover tab; let go, or close the tab, and the watchdog stops the motors within 0.5 s.
 
-**Scripted demo** (expo / video): `.venv/bin/python tools/demo.py` runs the same dashboard in mock mode, then drives a fixed row of 5 plants in AUTO and gets the same results every time: healthy, healthy, watch (leaf spot), unhealthy (blight, VOC puff), healthy. `--loop` repeats it forever, `--manual` waits for you to press Auto. The row is `PLANTS` at the top of `tools/demo.py`; scans go to `scans-demo/`.
+**Scripted demo** (expo / video, no rover or GPU): `cd leaflink && npm ci && node scripts/demo.js` (`--loop` repeats). See the top of `leaflink/scripts/demo.js`.
 
 ## Layout
 
@@ -35,7 +35,7 @@ plantbot/vision/         isolate.py (nearest-plant crop), classify.py (dummy/tfl
 plantbot/fusion.py       health = 100 * (0.7 * p_healthy + 0.3 * (1 - voc_stress))
 plantbot/mission.py      state machine: WARMUP, IDLE, scan flow, AUTO, ESTOP
 plantbot/store.py        scans/scans.db + scans/<id>/{raw.jpg, mask.png, crop.jpg, scan.json}; scans/sensors.csv at 1 Hz
-plantbot/web/            FastAPI server + single-file dashboard (vanilla JS, no build)
+plantbot/web/            FastAPI server: websocket control + telemetry, MJPEG stream, scan API (UI is LeafLink's Rover tab)
 tools/hw_check.py        spin each motor, read each sensor, take a photo. Run first, every time.
 tools/capture_dataset.py labeled photos from the rover camera (hotkeys 1-9), for training data
 tools/calibrate.py       print clean-air sensor values to sanity-check warm-up and RL
