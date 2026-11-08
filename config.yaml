@@ -23,13 +23,16 @@ motors:
     min_pulse_ms: 1.0
     max_pulse_ms: 2.0
   hbridge:
-    left_in1: 17
-    left_in2: 27
-    left_pwm: 12
-    right_in1: 22
-    right_in2: 23
+    # Current wiring: AIN1+BIN1 share GPIO20, AIN2+BIN2 share GPIO21, PWMA+PWMB share GPIO13,
+    # so both wheels always get the same command (forward/back only, no steering).
+    # Give the right side its own three pins to get differential steering back.
+    left_in1: 20
+    left_in2: 21
+    left_pwm: 13
+    right_in1: 20
+    right_in2: 21
     right_pwm: 13
-    stby: 24                   # TB6612 only; null for L298N
+    stby: 26                   # TB6612 only; null for L298N
     pwm_hz: 1000               # TB6612 takes up to 100 kHz; software PWM on the Pi is fine at 1 kHz
     min_duty: 0.3              # (assumed) duty where a TT motor starts turning on the ground; tune with hw_check
     # Motor supply (VM): ~6 V from a buck converter off the 3S LiPo. TT motors are 3-6 V.
@@ -69,7 +72,7 @@ ranger:
   max_cm: 200
 
 fan:
-  driver: gpio                 # gpio | none | mock
+  driver: none                 # gpio | none | mock. Off: GPIO26 is now motor STBY; pick a free pin to re-enable
   pin: 26
 
 sensing:

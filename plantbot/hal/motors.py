@@ -100,24 +100,35 @@ class GpioZeroMotors:
         h = cfg.hbridge
         freq, min_duty = h.get("pwm_hz", 1000), h.get("min_duty", 0.0)
         self.l = _HBridgeChannel(h.left_in1, h.left_in2, h.left_pwm, freq, min_duty)
-        self.r = _HBridgeChannel(h.right_in1, h.right_in2, h.right_pwm, freq, min_duty)
+        # Both channels wired to the same three pins: one channel drives both wheels, no steering.
+        self.shared = (h.left_in1, h.left_in2, h.left_pwm) == (h.right_in1, h.right_in2, h.right_pwm)
+        if self.shared:
+            log.warning("hbridge: left and right share pins; both wheels get one command (no turning)")
+            self.r = self.l
+        else:
+            self.r = _HBridgeChannel(h.right_in1, h.right_in2, h.right_pwm, freq, min_duty)
         # STBY low = both channels off (TB6612 only). Raised last so nothing twitches on init.
         self.stby = DigitalOutputDevice(h.stby, initial_value=True) if h.get("stby") is not None else None
 
     def drive(self, left: float, right: float) -> None:
+        if self.shared:
+            self.l.set((left + right) / 2)  # a pure spin (l = -r) becomes a stop
+            return
         self.l.set(left)
         self.r.set(right)
 
     def stop(self) -> None:
         self.l.set(0)
-        self.r.set(0)
+        if not self.shared:
+            self.r.set(0)
 
     def close(self) -> None:
         if self.stby:
             self.stby.off()
             self.stby.close()
         self.l.close()
-        self.r.close()
+        if not self.shared:
+            self.r.close()
 
 
 class SerialMotors:
