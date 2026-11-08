@@ -74,7 +74,8 @@ class Mission:
         self.set_state("WARMUP")
         while True:
             try:
-                self.range_cm = self.r.ranger.distance_cm()
+                # off the event loop: a stuck sensor read must not freeze the web server
+                self.range_cm = await asyncio.to_thread(self.r.ranger.distance_cm)
             except Exception as e:
                 log.warning("ranger read failed: %s", e)
                 self.range_cm = None

@@ -17,11 +17,16 @@ class HcSr04:
         from gpiozero import DistanceSensor  # lazy
 
         self.max_cm = cfg.max_cm
-        self.s = DistanceSensor(echo=cfg.echo_pin, trigger=cfg.trig_pin, max_distance=cfg.max_cm / 100)
+        # partial=True: without it, .distance blocks until the queue fills, forever if nothing echoes
+        self.s = DistanceSensor(echo=cfg.echo_pin, trigger=cfg.trig_pin, max_distance=cfg.max_cm / 100,
+                                partial=True)
 
     def distance_cm(self) -> float | None:
-        d = self.s.distance * 100
-        return None if d >= self.max_cm - 1 else d
+        d = self.s.distance
+        if d is None:
+            return None
+        d *= 100
+        return None if d <= 0 or d >= self.max_cm - 1 else d
 
 
 class NoRanger:
