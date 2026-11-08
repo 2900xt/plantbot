@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const defaults = { infected_samples:3, image_rule:'percent',infected_percent:10,cache_hours:24, cache_limit:100, grid_meters:5,
+const defaults = { infected_samples:3, image_rule:'percent',infected_percent:40,cache_hours:24, cache_limit:100, grid_meters:5,
   origin_lat:0, origin_lon:0, voc_top_rise:10, voc_difference_rise:5,
   voc_hold:5, voc_max_gap_seconds:10, location_max_age_seconds:10, gas_threshold:150, gas_hold:2 };
 const fail = message => { throw Object.assign(new Error(message), {status:400}); };
@@ -45,7 +45,7 @@ export function createFieldStore(db, now=Date.now) {
     CREATE TABLE IF NOT EXISTS capture_sequence (number INTEGER PRIMARY KEY AUTOINCREMENT, capture_id TEXT UNIQUE NOT NULL);`);
   db.prepare('INSERT OR IGNORE INTO field_settings VALUES (1,?)').run(JSON.stringify(defaults));
   db.exec('INSERT INTO capture_sequence(capture_id) SELECT id FROM captures WHERE id NOT IN (SELECT capture_id FROM capture_sequence) ORDER BY rowid');
-  const settings=()=>{const saved=JSON.parse(db.prepare('SELECT body FROM field_settings WHERE id=1').get().body);return {...defaults,...saved,image_rule:saved.image_rule || 'count'};};
+  const settings=()=>{const saved=JSON.parse(db.prepare('SELECT body FROM field_settings WHERE id=1').get().body);const merged={...defaults,...saved,image_rule:saved.image_rule || 'count'};merged.infected_percent=Math.min(80,Math.max(40,merged.infected_percent));return merged;};
   const purge=()=>{
     db.prepare('DELETE FROM field_cache WHERE expires<=?').run(now());
     db.prepare('DELETE FROM field_cache WHERE event_id NOT IN (SELECT event_id FROM field_cache ORDER BY expires DESC, rowid DESC LIMIT ?)').run(settings().cache_limit);
@@ -77,7 +77,7 @@ export function createFieldStore(db, now=Date.now) {
       }
       // Preserve callers of the original count-only API.
       if(Object.hasOwn(patch,'infected_samples')&&!Object.hasOwn(patch,'image_rule')&&!Object.hasOwn(patch,'infected_percent'))s.image_rule='count';
-      const bounds={infected_samples:[1,64],infected_percent:[1,100],cache_hours:[.01,168],cache_limit:[1,500],grid_meters:[1,1000],origin_lat:[-85,85],origin_lon:[-180,180],voc_top_rise:[.000001,1e9],voc_difference_rise:[.000001,1e9],voc_hold:[1,1000],gas_threshold:[0,1e9],gas_hold:[1,1000],voc_max_gap_seconds:[.1,3600],location_max_age_seconds:[0,3600]};
+      const bounds={infected_samples:[1,64],infected_percent:[40,80],cache_hours:[.01,168],cache_limit:[1,500],grid_meters:[1,1000],origin_lat:[-85,85],origin_lon:[-180,180],voc_top_rise:[.000001,1e9],voc_difference_rise:[.000001,1e9],voc_hold:[1,1000],gas_threshold:[0,1e9],gas_hold:[1,1000],voc_max_gap_seconds:[.1,3600],location_max_age_seconds:[0,3600]};
       for (const [key,[min,max]] of Object.entries(bounds)) if(s[key]<min||s[key]>max) fail(`${key} must be ${min}–${max}`);
       for (const key of ['infected_samples','cache_limit','voc_hold','gas_hold']) if(!Number.isInteger(s[key])) fail(`${key} must be an integer`);
       db.exec('BEGIN IMMEDIATE');
