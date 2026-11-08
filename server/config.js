@@ -7,12 +7,16 @@ export function config(env = process.env) {
     endpoint: env.B2_ENDPOINT, region: env.B2_REGION, bucket: env.B2_BUCKET,
     keyId: env.B2_KEY_ID, appKey: env.B2_APPLICATION_KEY,
     modelMode: env.MODEL_MODE || 'disabled', modelUrl: env.MODEL_URL, modelToken: env.MODEL_TOKEN,
+    binaryTriage: env.BINARY_TRIAGE === '1',
+    binaryDiseaseThreshold: Number(env.BINARY_DISEASE_THRESHOLD ?? .8),
     modelTimeout: Number(env.MODEL_TIMEOUT_MS || (env.MODEL_MODE === 'local' ? 120000 : 30000)), demoVerdict: env.DEMO_VERDICT || 'diseased',
     localModelDir: path.resolve(env.LOCAL_MODEL_DIR || '../outputs/models/leaf-cnn-epoch6'),
     gpuModelDir:path.resolve(env.GPU_MODEL_DIR || './models/LeafCNN-Epoch8-GPU'),
     leafVersion:env.LEAF_HEURISTIC_VERSION || 'v2',
     inferenceThreads:Number(env.INFERENCE_CPU_THREADS || 8),inferenceFormat:env.INFERENCE_MEMORY_FORMAT || 'channels_last',
     leafMode: env.LEAF_CROP_MODE || 'heuristic', groundMode: env.GROUND_MASK_MODE || 'local',
+    residentLeafWorker:env.RESIDENT_LEAF_WORKER !== '0',groundDevice:env.GROUND_DEVICE || 'cpu',
+    groundCpuThreads:Number(env.GROUND_CPU_THREADS || 4),
     groundModelDir: path.resolve(env.GROUND_MODEL_DIR || './models/PlantLeafPipeline/models/segformer-b2-ade20k'),
     pythonBin: env.PYTHON_BIN || (process.platform === 'win32' ? 'py' : 'python3'), pythonModulePath: env.PYTHON_MODULE_PATH,
     cropMode: env.LEAF_WINDOW_MODE || 'tight', minLeafExtent: Number(env.MIN_LEAF_EXTENT || 80),
@@ -24,7 +28,9 @@ export function config(env = process.env) {
   if (c.driver === 'b2' && ![c.endpoint,c.region,c.bucket,c.keyId,c.appKey].every(Boolean)) throw new Error('All B2 settings are required');
   if (c.driver === 'b2' && (!/^https:\/\/s3\.[a-z0-9-]+\.backblazeb2\.com$/.test(c.endpoint))) throw new Error('Use the HTTPS B2 regional S3 endpoint');
   if (!['disabled','http','demo','local','gpu'].includes(c.modelMode)) throw new Error('Invalid MODEL_MODE');
+  if (![undefined,'0','1'].includes(env.BINARY_TRIAGE) || !Number.isFinite(c.binaryDiseaseThreshold) || c.binaryDiseaseThreshold < 0 || c.binaryDiseaseThreshold > 1) throw new Error('Binary threshold must be between 0 and 1 and BINARY_TRIAGE=0 or 1');
   if (!['v1','v2'].includes(c.leafVersion)) throw new Error('Invalid LEAF_HEURISTIC_VERSION');
+  if (!['cpu','cuda'].includes(c.groundDevice) || !Number.isInteger(c.groundCpuThreads) || c.groundCpuThreads<1 || c.groundCpuThreads>32) throw new Error('Invalid ground runtime settings');
   if (c.modelMode === 'http' && !/^https?:\/\//.test(c.modelUrl || '')) throw new Error('MODEL_URL is required');
   if (!Number.isFinite(c.modelTimeout) || c.modelTimeout < 100 || c.modelTimeout > 300000) throw new Error('Invalid MODEL_TIMEOUT_MS');
   if (!['diseased','healthy'].includes(c.demoVerdict)) throw new Error('Invalid DEMO_VERDICT');

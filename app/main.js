@@ -1,4 +1,5 @@
 import './style.css';
+import {verdictLabel,scoreLabel} from './verdict.js';
 const $ = id => document.getElementById(id);
 let base = localStorage.getItem('leaflink-url') || '';
 let token = sessionStorage.getItem('leaflink-token') || localStorage.getItem('leaflink-token') || '';
@@ -131,7 +132,7 @@ function renderList() {
     const text = document.createElement('span'); text.className = 'row-text';
     const strong = document.createElement('strong'); strong.textContent = row.device;
     const small = document.createElement('small'); small.textContent = `${new Date(row.created).toLocaleString()} · ${row.id.slice(0,8)}`;
-    const status = document.createElement('span'); status.className = 'row-status'; status.textContent = row.result ? `${row.result.simulated ? 'DEMO · ' : ''}${row.result.scope === 'leaf_candidates' ? `${row.result.diseased_count}/${row.result.leaf_count} flagged` : row.result.verdict === 'healthy' ? 'Healthy' : 'Diseased'}` : labels[row.status] || row.status;
+    const status = document.createElement('span'); status.className = 'row-status'; status.textContent = row.result ? `${row.result.simulated ? 'DEMO · ' : ''}${row.result.scope === 'leaf_candidates' ? `${row.result.diseased_count}/${row.result.leaf_count} flagged` : verdictLabel(row.result.verdict)}` : labels[row.status] || row.status;
     text.append(strong,small); button.append(icon,text,status);
     button.onclick = () => { selectedId = row.id; selectedFile = null; $('send-photo').hidden = true; refresh().catch(error => notice(error.message, true)); };
     $('capture-list').append(button);
@@ -152,8 +153,8 @@ function renderJourney() {
   detail.textContent = row ? `Capture ${row.id.slice(0,8)} · ${row.storage === 'b2' ? 'Backblaze B2' : 'local test storage'}` : 'Your capture’s progress and result will appear here.';
   if (row?.result) {
     const r = row.result; result.classList.add(r.simulated ? 'simulated' : r.verdict);
-    title.textContent = `${r.simulated ? 'DEMO · ' : ''}${r.verdict === 'healthy' ? 'Healthy' : 'Diseased'}`;
-    detail.textContent = r.simulated ? 'Simulated result for pipeline testing. No ML model analyzed this image.' : `Model score: ${(r.confidence*100).toFixed(1)}% · ${r.model_version}. Scores may be uncalibrated.`;
+    title.textContent = `${r.simulated ? 'DEMO · ' : ''}${verdictLabel(r.verdict)}`;
+    detail.textContent = r.simulated ? 'Simulated result for pipeline testing. No ML model analyzed this image.' : `${scoreLabel(r)} · ${r.model_version}.`;
     if (r.scope === 'leaf_candidates') {
       title.textContent = `${r.simulated ? 'DEMO · ' : ''}${r.diseased_count} of ${r.leaf_count} candidates flagged`;
       detail.textContent = r.simulated ? 'Simulated disease verdicts. Leaf crops are real; no disease classifier ran.' : 'Results describe only the detected candidates. Missed leaves and the whole plant have not been assessed.';
@@ -199,7 +200,7 @@ function renderLeaves(row) {
     const title = document.createElement('h3'); title.textContent = `Candidate ${leaf.index}`;
     const meta = document.createElement('p'); meta.textContent = `Source bounds: ${leaf.bounds.join(', ')} · Ground overlap ${(leaf.ground_overlap*100).toFixed(1)}%`;
     const verdict = document.createElement('p'); verdict.className = 'leaf-verdict';
-    verdict.textContent = leaf.result ? `${leaf.result.simulated ? 'DEMO · ' : ''}${leaf.result.verdict === 'healthy' ? 'Healthy' : 'Diseased'} · Model score ${(leaf.result.confidence*100).toFixed(1)}%${leaf.result.simulated ? ' (simulated)' : ''}` : leaf.status==='processing' ? 'Analyzing this leaf…' : row.status==='awaiting_model' ? 'Waiting for disease model' : 'Queued for analysis';
+    verdict.textContent = leaf.result ? `${leaf.result.simulated ? 'DEMO · ' : ''}${verdictLabel(leaf.result.verdict)} · ${scoreLabel(leaf.result)}${leaf.result.simulated ? ' (simulated)' : ''}` : leaf.status==='processing' ? 'Analyzing this leaf…' : row.status==='awaiting_model' ? 'Waiting for disease model' : 'Queued for analysis';
     if (leaf.result?.class_name) {const label=document.createElement('p');label.className='leaf-class';label.textContent=leaf.result.class_name.replaceAll('_',' ');card.append(label);}
     card.append(img,title,meta,verdict); $('leaf-grid').append(card);
     const key = `${id}/${leaf.id}`;

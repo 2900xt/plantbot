@@ -8,5 +8,5 @@ if (-not (Test-Path -LiteralPath 'node_modules/express')) {
 }
 & node server/configure-field.js --show-token
 if ($LASTEXITCODE -ne 0) { throw 'Could not create field configuration.' }
-Write-Host 'Model inference requires CUDA PyTorch. See FIELD-APP.md for server setup.'
+Write-Host 'Model inference requires CUDA PyTorch and the configured model weights.'
 & node --env-file=.env.field server/index.js

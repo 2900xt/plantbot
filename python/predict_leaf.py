@@ -83,6 +83,7 @@ def predict(payload):
     name = top[0]["class_name"]
     return {"verdict":"healthy" if name.endswith("_healthy") else "diseased", "confidence":top[0]["confidence"],
             "class_name":name,"class_index":int(indices[0]),"top_predictions":top,"input_size":[size,size],
+            "classes":classes,"probabilities":probabilities.tolist(),
             "score_type":"winning_class_softmax","model_version":version,"simulated":False}
 
 

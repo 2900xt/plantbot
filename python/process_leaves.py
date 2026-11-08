@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -21,25 +22,39 @@ def encode(image, fmt):
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
-def ground_mask(image, model_path):
+_ground_cache = None
+
+
+def ground_mask(image, model_path, device="cpu", cpu_threads=4):
     # Matches scripts/mask_ground.py, with the B2 checkpoint selected explicitly.
     import torch
     from transformers import SegformerForSemanticSegmentation
-    torch.set_num_threads(4)
-    directory = Path(model_path)
-    model = SegformerForSemanticSegmentation.from_pretrained(directory, local_files_only=True).eval()
-    config = json.loads((directory / "preprocessor_config.json").read_text())
-    mean = np.array(config["image_mean"], dtype=np.float32)
-    std = np.array(config["image_std"], dtype=np.float32)
-    names = {"earth", "grass", "road", "sidewalk", "floor", "sand", "path", "dirt track", "land"}
-    ground_ids = [int(i) for i, name in model.config.id2label.items() if name.strip() in names]
-    if not ground_ids:
-        raise ValueError("Ground model has no supported ground classes")
+    global _ground_cache
+    if device not in ("cpu", "cuda"):
+        raise ValueError("Ground device must be cpu or cuda")
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("GROUND_DEVICE=cuda requires CUDA PyTorch and an available NVIDIA GPU")
+    if not isinstance(cpu_threads, int) or not 1 <= cpu_threads <= 32:
+        raise ValueError("Ground CPU threads must be between 1 and 32")
+    torch.set_num_threads(cpu_threads)
+    directory = Path(model_path).resolve()
+    key = (str(directory), device)
+    if _ground_cache is None or _ground_cache[0] != key:
+        model = SegformerForSemanticSegmentation.from_pretrained(directory, local_files_only=True).eval().to(device)
+        config = json.loads((directory / "preprocessor_config.json").read_text())
+        mean = np.array(config["image_mean"], dtype=np.float32)
+        std = np.array(config["image_std"], dtype=np.float32)
+        names = {"earth", "grass", "road", "sidewalk", "floor", "sand", "path", "dirt track", "land"}
+        ground_ids = [int(i) for i, name in model.config.id2label.items() if name.strip() in names]
+        if not ground_ids:
+            raise ValueError("Ground model has no supported ground classes")
+        _ground_cache = (key, model, mean, std, ground_ids)
+    _, model, mean, std, ground_ids = _ground_cache
     pixels = np.asarray(image.resize((512, 512), Image.Resampling.BILINEAR), dtype=np.float32) / 255
-    tensor = torch.from_numpy(((pixels - mean) / std).transpose(2, 0, 1).copy()).unsqueeze(0)
+    tensor = torch.from_numpy(((pixels - mean) / std).transpose(2, 0, 1).copy()).unsqueeze(0).to(device)
     with torch.inference_mode():
         logits = model(pixel_values=tensor).logits
-        labels = torch.nn.functional.interpolate(logits, size=(512, 512), mode="bilinear", align_corners=False).argmax(1)[0].numpy()
+        labels = torch.nn.functional.interpolate(logits, size=(512, 512), mode="bilinear", align_corners=False).argmax(1)[0].cpu().numpy()
     raw = np.isin(labels, ground_ids)
     broad = ndi.binary_closing(np.pad(raw, 8, mode="edge"), structure=np.ones((17, 17), bool))[8:-8, 8:-8] | raw
     holes = ndi.binary_fill_holes(broad) & ~broad
@@ -52,9 +67,12 @@ def ground_mask(image, model_path):
 
 
 def process(payload):
+    started = time.perf_counter()
     def progress(stage, message):
         print('LEAFLINK_PROGRESS:' + json.dumps({"stage":stage,"message":message}), file=sys.stderr, flush=True)
     image = Image.open(io.BytesIO(base64.b64decode(payload["image"], validate=True))).convert("RGB")
+    decoded = time.perf_counter()
+    cache_before = _ground_cache
     if payload.get("mask"):
         mask = Image.open(io.BytesIO(base64.b64decode(payload["mask"], validate=True)))
         if mask.mode not in ("1", "L"):
@@ -63,10 +81,11 @@ def process(payload):
         mask_source = "provided"
     elif payload["ground_mode"] == "local":
         progress("ground_mask", "SegFormer-B2 is identifying ground regions")
-        mask = ground_mask(image, payload["ground_model_dir"])
+        mask = ground_mask(image, payload["ground_model_dir"], payload.get("ground_device", "cpu"), payload.get("ground_cpu_threads", 4))
         mask_source = "segformer-b2-local"
     else:
         raise ValueError("An aligned binary ground_mask upload is required in provided mode")
+    masked = time.perf_counter()
     progress("leaf_separation", "Separating foliage into individual leaf candidates")
     if payload.get('heuristic_version','v2') == 'v2':
         cfg=LeafHeuristicConfig(max_candidates=payload['max_candidates'],
@@ -76,13 +95,21 @@ def process(payload):
         result['quality'].update(blur_threshold=cfg.blur_threshold,crop_sharpness_threshold=cfg.min_crop_sharpness)
     else:
         result = extract_leaf_candidates(image, mask, min_leaf_extent=payload["min_leaf_extent"], crop_mode=payload["crop_mode"])
+    separated = time.perf_counter()
     all_candidates = result["candidates"]
     candidates = []
     for item in all_candidates[:payload["max_candidates"]]:
         item = dict(item)
         item["image"] = encode(item.pop("crop"), "JPEG")
         candidates.append(item)
-    return {"candidates": candidates, "ground_mask": encode(mask, "PNG"), "mask_source": mask_source,
+    encoded_mask = encode(mask, "PNG")
+    finished = time.perf_counter()
+    timings = {"decode_ms": (decoded-started)*1000, "ground_ms": (masked-decoded)*1000,
+               "separation_ms": (separated-masked)*1000, "encode_ms": (finished-separated)*1000,
+               "total_ms": (finished-started)*1000,
+               "ground_model_reused": mask_source != "provided" and cache_before is _ground_cache,
+               "ground_device": payload.get("ground_device", "cpu") if mask_source != "provided" else "provided"}
+    return {"candidates": candidates, "ground_mask": encoded_mask, "mask_source": mask_source, "timings": timings,
             "source_size": [image.width, image.height], "crop_size": [384, 384],
             "candidate_count": len(candidates), "total_candidates": len(all_candidates),
             "truncated": len(all_candidates) >= payload['max_candidates'], "rejected_ground": result.get("rejected_ground",result.get('rejected',{}).get('ground',0)),
