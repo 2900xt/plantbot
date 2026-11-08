@@ -17,6 +17,46 @@ try{const saved=JSON.parse(sessionStorage.getItem('field-map-return')||'null');i
 let previewState=null,previewTimer=null,suppressFocusPreview=false;
 const map=createFieldMap({onSelect:selectPoint,onOpen:openCapture,onNotice:message=>notice(message),onPreview:showHoverPreview,onPreviewLeave:schedulePreviewClose,onMapChange:hidePreview});
 $('url').value=base;$('token').value=token;
+// Loading bar under the header. Each job is {label, value 0-100 or null = indeterminate};
+// the newest job is shown, and the bar fills to 100% and fades once every job is done.
+const loadJobs=new Map();let loadHideTimer=null;
+function loading(key,label,value){
+  loadJobs.delete(key);if(value!==false)loadJobs.set(key,{label,value});
+  const bar=$('load-bar'),fill=bar.firstElementChild,text=$('load-label'),job=[...loadJobs.values()].at(-1);
+  clearTimeout(loadHideTimer);
+  if(!job){
+    if(bar.hidden)return;
+    bar.classList.remove('indeterminate');fill.style.width='100%';bar.setAttribute('aria-valuenow','100');text.hidden=true;
+    loadHideTimer=setTimeout(()=>{if(!loadJobs.size){bar.hidden=true;fill.style.width='0%';}},450);
+    return;
+  }
+  bar.hidden=false;text.hidden=false;text.textContent=job.label;bar.setAttribute('aria-valuetext',job.label);
+  bar.classList.toggle('indeterminate',job.value==null);
+  if(job.value==null){fill.style.width='';bar.removeAttribute('aria-valuenow');}
+  else{const pct=Math.max(0,Math.min(100,Math.round(job.value)));fill.style.width=pct+'%';bar.setAttribute('aria-valuenow',String(pct));}
+}
+// Pipeline progress for one capture, 0-100. Same six steps as the capture page:
+// upload/store, ground mask, separate leaves, classify (per leaf), results.
+const ACTIVE=['queued','uploading','splitting','processing'];
+const STAGE_STEP={queued:1,storage:1,ground_mask:2,leaf_separation:3,saving_crops:4,classifying:4,complete:6,awaiting_mask:2,awaiting_model:4,no_candidates:4};
+function pipelinePercent(c){
+  if(c.status==='complete')return 100;
+  const p=c.progress||{};let step=STAGE_STEP[p.stage]??(c.stored?2:1);
+  if(p.stage==='classifying'&&p.total_leaves)step=4+(p.completed_leaves||0)/p.total_leaves;
+  return Math.round(100*step/6);
+}
+function pipelineLabel(c){
+  const p=c.progress||{};
+  if(p.stage==='classifying'&&p.total_leaves)return `Analyzing leaf ${Math.min((p.completed_leaves||0)+1,p.total_leaves)} of ${p.total_leaves}`;
+  return {ground_mask:'Finding ground',leaf_separation:'Separating leaves',saving_crops:'Saving leaf crops',classifying:'Analyzing leaves'}[p.stage]||(c.status==='queued'?'Queued':'Processing');
+}
+function pipelineBar(c,cls){
+  if(!ACTIVE.includes(c.status))return '';
+  const pct=pipelinePercent(c);
+  return `<div class="${cls}"><div class="ll-progress" role="progressbar" aria-label="Analysis progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-valuetext="${esc(pipelineLabel(c))}, ${pct}%"><i data-pct="${pct}"></i></div><span>${esc(pipelineLabel(c))} · ${pct}%</span></div>`;
+}
+// The CSP forbids inline style attributes, so widths are applied through the CSSOM.
+function applyBarWidths(root){for(const fill of root.querySelectorAll('.ll-progress>i[data-pct]'))fill.style.width=fill.dataset.pct+'%';}
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);}
 function toggleConnection(show){$('connection').hidden=!show;$('connection-toggle').setAttribute('aria-expanded',String(show));}
 function tab(name){if(name!=='monitor')hidePreview();if(name!=='monitor'&&!$('monitor').hidden){lastMapReturn={base,map:map.getState(),scroll:window.scrollY,filter:filter?{...filter}:null,signal,key:lastMapPointKey,vocOpen:$('voc-panel').open,cvOpen:$('cv-panel').open};sessionStorage.setItem('field-map-return',JSON.stringify(lastMapReturn));}for(const node of document.querySelectorAll('.tab-panel'))node.hidden=node.id!==name;for(const node of document.querySelectorAll('[data-tab]')){node.classList.toggle('active',node.dataset.tab===name);node.setAttribute('aria-pressed',String(node.dataset.tab===name));} $('utility-menu').hidden=true; $('tools-toggle').setAttribute('aria-expanded','false'); if(name==='capture')location.hash=selected?'images/'+selected:'images';else location.hash=name==='monitor'?'field':name;}
@@ -35,7 +75,7 @@ async function image(route,key,node,{silent=false}={}){
   catch(error){if(node.isConnected){node.alt=error.message;if(!silent)notice(error.message,true);}}
 }
 function stopGps(){if(gpsId!=null)navigator.geolocation.clearWatch(gpsId);gpsId=null;gpsDevice=null;$('gps').textContent='Start GPS stream';$('gps-status').textContent='GPS off';}
-function clearData(){generation++;galleryGeneration++;stopGps();for(const url of urls.values())URL.revokeObjectURL(url);urls.clear();field=null;events=[];captures=[];selected=null;filter=null;eventSignature='';detailSignature='';lastCaptures='';map.reset();lastMapReturn=null;lastMapPointKey=null;sessionStorage.removeItem('field-map-return');$('captures').innerHTML='<tr><td colspan="6">No images loaded.</td></tr>';$('image-gallery').innerHTML='<p class="empty">Connect to load images.</p>';$('voc-events').innerHTML='<p class="empty">No VOC anomalies yet.</p>';$('cv-events').innerHTML='<p class="empty">No CV anomalies yet.</p>';$('voc-count').textContent='0';$('cv-count').textContent='0';$('marker-note').hidden=true;$('samples').innerHTML='<tr><td colspan="4">No measurements loaded.</td></tr>';$('capture-detail').innerHTML='<p class="empty">Select an image to see the full photo.</p>';$('locations').textContent='No positions loaded.';$('sensor-summary').textContent='No measurements loaded.';$('config').innerHTML='<dt>Connection</dt><dd>Not connected</dd>';$('capture-count').textContent='No images loaded';$('event-summary').textContent='No anomalies';$('last-sync').textContent='No server contact yet';$('mode-label').hidden=true;$('detection').disabled=true;renderGrid();}
+function clearData(){generation++;galleryGeneration++;loading('photos',null,false);stopGps();for(const url of urls.values())URL.revokeObjectURL(url);urls.clear();field=null;events=[];captures=[];selected=null;filter=null;eventSignature='';detailSignature='';lastCaptures='';map.reset();lastMapReturn=null;lastMapPointKey=null;sessionStorage.removeItem('field-map-return');$('captures').innerHTML='<tr><td colspan="6">No images loaded.</td></tr>';$('image-gallery').innerHTML='<p class="empty">Connect to load images.</p>';$('voc-events').innerHTML='<p class="empty">No VOC anomalies yet.</p>';$('cv-events').innerHTML='<p class="empty">No CV anomalies yet.</p>';$('voc-count').textContent='0';$('cv-count').textContent='0';$('marker-note').hidden=true;$('samples').innerHTML='<tr><td colspan="4">No measurements loaded.</td></tr>';$('capture-detail').innerHTML='<p class="empty">Select an image to see the full photo.</p>';$('locations').textContent='No positions loaded.';$('sensor-summary').textContent='No measurements loaded.';$('config').innerHTML='<dt>Connection</dt><dd>Not connected</dd>';$('capture-count').textContent='No images loaded';$('event-summary').textContent='No anomalies';$('last-sync').textContent='No server contact yet';$('mode-label').hidden=true;$('detection').disabled=true;renderGrid();}
 $('disconnect').onclick=()=>{connected=false;token='';sessionStorage.removeItem('field-token');$('token').value='';$('status').textContent='Disconnected';$('status').classList.remove('online');clearData();toggleConnection(true);notice('Disconnected. Your token has been cleared from this tab.');};
 $('connect-form').onsubmit=async event=>{
   event.preventDefault();const value=$('url').value.trim().replace(/\/+$/,'');
@@ -44,16 +84,23 @@ $('connect-form').onsubmit=async event=>{
   try{await connect();}catch(error){notice(error.message,true);}
 };
 async function connect(){
-  const config=await(await request('/config')).json();
-  connected=true;$('status').textContent='Connected';$('status').classList.add('online');toggleConnection(false);
-  $('config').innerHTML=Object.entries({Storage:config.storage,Classifier:config.model,'Ground mask':config.ground_mask,'Leaf extraction':config.leaf_extraction}).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-  $('mode-label').hidden=config.model!=='demo';
-  notice(config.model==='demo'?'Simulation mode':config.model==='disabled'?'Classifier disabled. Images can be separated but will wait for a model.':'Field connected');
-  settings=await(await request('/settings')).json();fillRules();await refresh();applyRoute();
+  loading('connect','Connecting to server',8);
+  try{
+    const config=await(await request('/config')).json();
+    loading('connect','Loading settings',35);
+    connected=true;$('status').textContent='Connected';$('status').classList.add('online');toggleConnection(false);
+    $('config').innerHTML=Object.entries({Storage:config.storage,Classifier:config.model,'Ground mask':config.ground_mask,'Leaf extraction':config.leaf_extraction}).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+    $('mode-label').hidden=config.model!=='demo';
+    notice(config.model==='demo'?'Simulation mode':config.model==='disabled'?'Classifier disabled. Images can be separated but will wait for a model.':'Field connected');
+    settings=await(await request('/settings')).json();fillRules();
+    loading('connect','Loading field data',65);
+    await refresh();applyRoute();
+  }finally{loading('connect',null,false);}
 }
 function fillRules(){for(const [key,value] of Object.entries(settings||{})){const input=$('rules-form').elements.namedItem(key);if(input)input.value=value;}syncDetection();}
-async function refresh(){
+async function refresh({manual=false}={}){
   if(busy||!connected)return;busy=true;const current=generation;
+  if(manual)loading('refresh','Refreshing field',null);
   try{
     const results=await Promise.all(['/field','/events','/captures'].map(async route=>(await request(route)).json()));
     if(current!==generation)return;
@@ -62,9 +109,9 @@ async function refresh(){
     renderGrid();renderEvents();renderCaptures();renderSensors();renderGas();renderDrift();
     if(selected)await renderDetail();
   }catch(error){if(current===generation){$('status').textContent='Connection lost';$('status').classList.remove('online');notice(`${error.message}. Data shown may be stale; retry or reconnect.`,true);}}
-  finally{busy=false;}
+  finally{busy=false;if(manual)loading('refresh',null,false);}
 }
-$('refresh').onclick=()=>refresh();
+$('refresh').onclick=()=>refresh({manual:true});
 function cell(loc){if(!loc||!settings)return null;const rad=Math.PI/180,r=6371000;const d=((loc.lon-settings.origin_lon+540)%360)-180;return{x:Math.floor(r*d*rad*Math.cos(settings.origin_lat*rad)/settings.grid_meters),y:Math.floor(r*(loc.lat-settings.origin_lat)*rad/settings.grid_meters)};}
 function renderGrid(){map.render(field,captures,settings,signal);}
 $('clear-filter').onclick=()=>{filter=null;eventSignature='';hidePreview();renderEvents();};
@@ -185,7 +232,8 @@ async function renderDetail(){
   const c=captures.find(c=>c.id===selected)||await(await request(`/captures/${selected}`)).json();
   const signature=JSON.stringify(c);if(signature===detailSignature)return;detailSignature=signature;
   const leafCount=c.leaves?.length||0,done=c.leaves?.filter(l=>l.result).length||0;
-  $('capture-detail').innerHTML=`<div class="image-detail-heading"><h3>Image #${c.number} · ${esc(c.status.replaceAll('_',' '))}</h3><button id="back-to-map" class="image-close" aria-label="Return to previous map view" title="Return to map">×</button></div><p>${esc(c.progress?.message||'Waiting for processing')}</p><progress max="${Math.max(leafCount,1)}" value="${done}" aria-label="Leaf candidates analyzed"></progress><p class="muted">Received ${date(c.created)}<br>Captured ${date(c.metadata?.captured_at)}<br>Threshold: ${c.metadata?.policy?.image_rule==='percent'?c.metadata.policy.infected_percent+'%':(c.metadata?.policy?.infected_samples??'legacy')+' samples'}${c.extraction?.truncated?' · candidate cap reached':''}</p>${c.error?`<p>${esc(c.error)}</p>`:''}<button id="enlarge-photo" class="text-button">Enlarge photo</button><img id="detail-photo" alt="Source field photo">${['failed','awaiting_model','awaiting_mask','no_candidates'].includes(c.status)?'<button id="retry">Retry processing</button>':''}<h3>${leafCount} leaf candidates${c.result?.simulated?' · SIMULATED':''}</h3><div class="leaves">${(c.leaves||[]).map(l=>`<div class="leaf"><img data-leaf="${l.id}" alt="Leaf candidate ${l.index}"><p>Candidate ${l.index} · ${esc(l.result?verdictLabel(l.result.verdict):l.status)}</p><p>${l.result?esc(scoreLabel(l.result)):''}</p></div>`).join('')}</div>`;
+  $('capture-detail').innerHTML=`<div class="image-detail-heading"><h3>Image #${c.number} · ${esc(c.status.replaceAll('_',' '))}</h3><button id="back-to-map" class="image-close" aria-label="Return to previous map view" title="Return to map">×</button></div><p>${esc(c.progress?.message||'Waiting for processing')}</p>${pipelineBar(c,'detail-progress')}${leafCount?`<p class="muted">${done} of ${leafCount} leaf candidates analyzed</p>`:''}<p class="muted">Received ${date(c.created)}<br>Captured ${date(c.metadata?.captured_at)}<br>Threshold: ${c.metadata?.policy?.image_rule==='percent'?c.metadata.policy.infected_percent+'%':(c.metadata?.policy?.infected_samples??'legacy')+' samples'}${c.extraction?.truncated?' · candidate cap reached':''}</p>${c.error?`<p>${esc(c.error)}</p>`:''}<button id="enlarge-photo" class="text-button">Enlarge photo</button><img id="detail-photo" alt="Source field photo">${['failed','awaiting_model','awaiting_mask','no_candidates'].includes(c.status)?'<button id="retry">Retry processing</button>':''}<h3>${leafCount} leaf candidates${c.result?.simulated?' · SIMULATED':''}</h3><div class="leaves">${(c.leaves||[]).map(l=>`<div class="leaf"><img data-leaf="${l.id}" alt="Leaf candidate ${l.index}"><p>Candidate ${l.index} · ${esc(l.result?verdictLabel(l.result.verdict):l.status)}</p><p>${l.result?esc(scoreLabel(l.result)):''}</p></div>`).join('')}</div>`;
+  applyBarWidths($('capture-detail'));
   image(`/captures/${c.id}/image`,c.id,$('detail-photo'));
   $('back-to-map').onclick=returnToMap;
   $('enlarge-photo').onclick=()=>showFullPhoto(c);
@@ -270,11 +318,21 @@ function syncDetection(){if(!settings)return;$('detection').disabled=!connected;
 $('detection').oninput=()=>{$('detection-value').value=$('detection').value+'%';};
 $('detection').onchange=async()=>{const slider=$('detection');slider.disabled=true;try{settings=await json('/settings',{image_rule:'percent',infected_percent:Number(slider.value)},'PUT');fillRules();notice(`Detection set to ${settings.infected_percent}% for new photos`);}catch(error){syncDetection();notice(error.message,true);}finally{slider.disabled=false;}};
 function renderGallery(){
-  galleryGeneration++;
-  $('image-gallery').innerHTML=captures.length?captures.map(c=>`<button class="image-tile" data-photo="${c.id}" aria-label="Open image ${c.number}"><img alt="Field image ${c.number}" loading="lazy"><span><strong>Image #${c.number}</strong><span>${date(c.created)}</span></span><span class="image-verdict">${c.result?.simulated?'Simulated · ':''}${c.result?esc(candidateSummary(c.result)):esc(c.status.replaceAll('_',' '))}</span></button>`).join(''):'<p class="empty">Your field photos will appear here.</p>';
-  for(const node of $('image-gallery').querySelectorAll('[data-photo]')){
+  const current=++galleryGeneration;
+  $('image-gallery').innerHTML=captures.length?captures.map(c=>`<button class="image-tile" data-photo="${c.id}" aria-label="Open image ${c.number}"><img alt="Field image ${c.number}" loading="lazy"><span><strong>Image #${c.number}</strong><span>${date(c.created)}</span></span><span class="image-verdict">${c.result?.simulated?'Simulated · ':''}${c.result?esc(candidateSummary(c.result)):esc(c.status.replaceAll('_',' '))}</span>${pipelineBar(c,'tile-progress')}</button>`).join(''):'<p class="empty">Your field photos will appear here.</p>';
+  applyBarWidths($('image-gallery'));
+  // Thumbnails not fetched yet drive the loading bar; cached ones show at once.
+  const nodes=[...$('image-gallery').querySelectorAll('[data-photo]')],total=nodes.filter(n=>!urls.has(n.dataset.photo)).length;
+  let done=0;
+  const label=()=>`Loading photos ${done}/${total}`;
+  if(total)loading('photos',label(),0);else loading('photos',null,false);
+  for(const node of nodes){
     node.onclick=()=>openCapture(node.dataset.photo);
-    image(`/captures/${node.dataset.photo}/image`,node.dataset.photo,node.querySelector('img'));
+    const fresh=!urls.has(node.dataset.photo);
+    image(`/captures/${node.dataset.photo}/image`,node.dataset.photo,node.querySelector('img')).finally(()=>{
+      if(!fresh||current!==galleryGeneration)return;
+      done++;loading('photos',done<total?label():null,done<total?100*done/total:false);
+    });
   }
 }
 function showFullPhoto(c){

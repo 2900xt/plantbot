@@ -49,3 +49,18 @@
 .drift-watch-state{border-color:#d9a400}.drift-watch-state .drift-spark polyline{stroke:#b38700}
 .drift-diseased{border-color:#c62828;background:#fdecea}.drift-diseased .gas-head strong{color:#c62828}.drift-diseased .drift-spark polyline{stroke:#c62828}
 .drift-idle .gas-head strong,.drift-calibrating .gas-head strong{color:#777}
+
+/* Progress bars: ink outline, peach hatched fill, hand-drawn corners (matches tabs and tiles). */
+.ll-progress{position:relative;height:12px;border:1.6px solid var(--text);border-radius:5px 9px 4px 8px;background:var(--surface);overflow:hidden;box-shadow:1px 2px 0 var(--text)}
+.ll-progress>i{display:block;height:100%;width:0;background-color:var(--peach);background-image:repeating-linear-gradient(-45deg,transparent 0 6px,rgba(38,61,91,.16) 6px 9px);border-right:1.6px solid var(--text);transition:width .35s ease-out}
+.ll-progress.indeterminate>i{position:absolute;top:0;left:-40%;width:40%;border-left:1.6px solid var(--text);animation:ll-progress-slide 1.4s ease-in-out infinite}
+@keyframes ll-progress-slide{to{left:100%}}
+@media(prefers-reduced-motion:reduce){.ll-progress>i{transition:none}.ll-progress.indeterminate>i{animation:none;left:0;width:100%;opacity:.55}}
+.load-bar{position:absolute;left:0;right:0;bottom:-7px;height:12px;z-index:5}
+.load-label{position:absolute;right:0;bottom:-31px;font-size:13px;color:var(--muted);background:var(--paper);padding:0 2px 0 8px}
+.tile-progress,.detail-progress{display:block;margin-top:9px}
+.tile-progress>span,.detail-progress>span{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+.tile-progress .ll-progress{height:10px}
+.detail-progress{max-width:520px;margin:4px 0 14px}
+@media(max-width:760px){.load-label{display:none}}
+
