@@ -7,20 +7,20 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node server/configure-field.js --show-token && node --env-file=.env.field server/index.js",
+    "start": "node setup.js --start",
     "start:legacy": "node --env-file-if-exists=.env server/index.js",
-    "start:field": "node server/configure-field.js --show-token && node --env-file=.env.field server/index.js",
+    "start:field": "node setup.js --start",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "native:sync": "npm run build && cap sync",
     "android": "npm run native:sync && cap open android",
     "ios": "npm run native:sync && cap open ios",
     "setup:models": "node setup-models.js",
-    "prestart": "npm run build",
-    "prestart:field": "npm run build",
-    "prestart:legacy": "npm run build",
-    "start:experts": "node server/configure-field.js --experts --show-token && node --env-file=.env.experts server/index.js",
-    "prestart:experts": "npm run build"
+    "start:experts": "node setup.js --start --experts",
+    "setup": "node setup.js",
+    "doctor": "node setup.js --check",
+    "test": "node --test test/*.test.js",
+    "prestart:legacy": "npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

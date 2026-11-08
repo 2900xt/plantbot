@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "crop-experts-v1-20261108",
+  "release": "checkpoint1-sam2-v1-20261108",
   "assets": [
     {
       "path": "models/CropExperts-ResNet18/model.pt",
@@ -10,7 +10,7 @@
     },
     {
       "path": "models/PlantLeafPipeline/models/segformer-b2-ade20k/pytorch_model.bin",
-      "url": "https://github.com/NarwhaLIX/LeafLink/releases/download/crop-experts-v1-20261108/segformer-b2-ade20k.bin",
+      "url": "https://github.com/NarwhaLIX/LeafLink/releases/download/checkpoint1-sam2-v1-20261108/segformer-b2-ade20k.bin",
       "sha256": "187ca07bea003a5717c63d04ea90b07f33cd033c0ebf44b4b89fce5070d6c8f3",
       "bytes": 110000905
     },
@@ -19,6 +19,18 @@
       "url": "https://github.com/NarwhaLIX/LeafLink/releases/download/crop-experts-v1-20261108/leaf-cnn-epoch8.pt",
       "sha256": "506ddb8621650b6af0c2804b56617830b4f01bf345b15fb900628e8b22b512cc",
       "bytes": 2430101
+    },
+    {
+      "path": "models/LeafCNN-Field-Checkpoint1/model.pt",
+      "url": "https://github.com/NarwhaLIX/LeafLink/releases/download/checkpoint1-sam2-v1-20261108/leaf-cnn-checkpoint1.pt",
+      "sha256": "aead833ccb5d4737670e3254a47ab2f95b5a37d09ebf7f3acf78aa3b3f318c1e",
+      "bytes": 4848233
+    },
+    {
+      "path": "models/SAM2.1-Hiera-Tiny/model.safetensors",
+      "url": "https://github.com/NarwhaLIX/LeafLink/releases/download/checkpoint1-sam2-v1-20261108/sam2.1-hiera-tiny.safetensors",
+      "sha256": "48c14467e5cf9e51870511feb72c89688e82dd74523142c0538b663e193ac2a7",
+      "bytes": 155908064
     }
   ]
 }

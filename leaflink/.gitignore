@@ -18,3 +18,5 @@ access_token
 *.bin
 *.safetensors
 runtime-experts/
+.leaflink/
+.venv-field/

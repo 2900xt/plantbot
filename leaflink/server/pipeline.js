@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { storage } from './storage.js';
 import { infer } from './model.js';
 import {closeExpertWorker} from './experts.js';
+import {closeSegmentedWorker} from './segmented.js';
 import { extractLeaves, closeLeafWorker } from './leaves.js';
 import { createFieldStore } from './field.js';
 
@@ -42,7 +43,7 @@ export async function createPipeline(c, overrides = {}) {
   const objects = overrides.storage || storage(c);
   const now = overrides.now || Date.now;
   const field = createFieldStore(db,now);
-  const predict = overrides.infer || ((bytes, id) => infer(c, bytes, id));
+  const predict = overrides.infer || ((bytes, id, context) => infer(c, bytes, id, context));
   const split = overrides.extract || ((bytes, mask, onProgress) => extractLeaves(c, bytes, mask, onProgress));
   const progress = (id,stage,message,extra={}) => db.prepare('UPDATE captures SET progress=? WHERE id=?').run(JSON.stringify({stage,message,updated_at:new Date().toISOString(),...extra}),id);
   const publicRow = row => row && ({ id: row.id, number:field.number(row.id), metadata:row.field_metadata ? JSON.parse(row.field_metadata):null, device: row.device, created: row.created, status: row.status,
@@ -193,7 +194,7 @@ export async function createPipeline(c, overrides = {}) {
             progress(row.id,'classifying',`Analyzing candidate ${leaf.index} of ${leaves.length}`,{current_leaf:leaf.index,total_leaves:leaves.length,completed_leaves:leaves.filter(item=>item.result).length});
             leaf.status='processing';
             db.prepare('UPDATE captures SET leaves=? WHERE id=?').run(JSON.stringify(leaves),row.id);
-            leaf.result = await predict(await objects.get(leaf.object_key),leaf.id);
+            leaf.result = await predict(await objects.get(leaf.object_key),leaf.id,{leaf_bounds:leaf.bounds,crop_bounds:leaf.crop_bounds});
             leaf.status = 'complete';
             db.prepare('UPDATE captures SET leaves=? WHERE id=?').run(JSON.stringify(leaves),row.id);
           }
@@ -240,6 +241,6 @@ export async function createPipeline(c, overrides = {}) {
       const leaf = row?.leaves && JSON.parse(row.leaves).find(leaf => leaf.id === leafId);
       return leaf ? objects.get(leaf.object_key) : null;
     },
-    close() { c.gpuWorker?.child.kill(); closeExpertWorker(c); closeLeafWorker(c); db.close(); },
+    close() { c.gpuWorker?.child.kill(); closeExpertWorker(c); closeSegmentedWorker(c); closeLeafWorker(c); db.close(); },
   };
 }

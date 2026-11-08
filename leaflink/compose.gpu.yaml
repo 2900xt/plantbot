@@ -6,6 +6,7 @@ services:
     gpus: all
     env_file: .env.field
     environment:
+      MODEL_MODE: ${MODEL_MODE:-segmented}
       HOST: 0.0.0.0
       PYTHON_BIN: python
       PYTHON_MODULE_PATH: ""
