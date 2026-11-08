@@ -66,11 +66,16 @@ def remote_listing(pi: str, remote_dir: str) -> dict[str, int]:
 
 
 def is_complete_jpeg(path: Path, size: int) -> bool:
-    if not path.exists() or path.stat().st_size != size or size < 4:
+    # A file Windows has locked (antivirus scanning a fresh download, an image viewer)
+    # counts as "not ready yet": it's checked again on the next pass.
+    try:
+        if not path.exists() or path.stat().st_size != size or size < 4:
+            return False
+        with open(path, "rb") as f:
+            f.seek(-2, os.SEEK_END)
+            return f.read(2) == b"\xff\xd9"
+    except OSError:
         return False
-    with open(path, "rb") as f:
-        f.seek(-2, os.SEEK_END)
-        return f.read(2) == b"\xff\xd9"
 
 
 def pull_once(pi: str, remote_dir: str, dest: Path) -> tuple[int, int]:
@@ -92,14 +97,17 @@ def pull_once(pi: str, remote_dir: str, dest: Path) -> tuple[int, int]:
     for rel in todo:
         local = dest / rel
         part = local.with_name(local.name + ".part")
-        if is_complete_jpeg(part, remote[rel]):
-            os.replace(part, local)
-            copied += 1
-            print(f"  got {rel}")
-        else:
-            failed += 1
+        try:
+            if is_complete_jpeg(part, remote[rel]):
+                os.replace(part, local)
+                copied += 1
+                print(f"  got {rel}")
+                continue
             part.unlink(missing_ok=True)
             print(f"  RETRY {rel} (incomplete or failed copy)")
+        except OSError as e:  # file locked by another program: leave it, retry next pass
+            print(f"  RETRY {rel} (file busy: {e.strerror})")
+        failed += 1
     return copied, failed
 
 
@@ -133,6 +141,10 @@ def main():
             offline = True
             if not a.watch:
                 sys.exit(1)
+        except Exception as e:  # never let one bad pass stop --watch
+            if not a.watch:
+                raise
+            print(f"{time.strftime('%H:%M:%S')}  error: {e!r}; retrying")
         if not a.watch:
             print(f"Done: {total} new photo(s) in {dest}")
             return
