@@ -12,7 +12,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 echo "== I2C"
 sudo raspi-config nonint do_i2c 0
-sudo usermod -aG i2c,gpio,video,dialout "$APP_USER"
+sudo usermod -aG i2c,gpio,video,dialout,input "$APP_USER"  # input: USB mouse drive
 
 echo "== venv"
 cd "$APP_DIR"

@@ -41,6 +41,18 @@ if [ "$unit" != "$(cat /etc/systemd/system/plantbot.service 2>/dev/null)" ]; the
   echo "$unit" | sudo tee /etc/systemd/system/plantbot.service >/dev/null
   sudo systemctl daemon-reload
 fi
+# plantbot now does mouse drive + wheel photos itself; the old standalone services fight it
+# for the mouse and motor pins (Conflicts=plantbot.service), so turn them off for good.
+for old in mouse-drive wheel-capture; do
+  if systemctl is-enabled --quiet "$old" 2>/dev/null || systemctl is-active --quiet "$old" 2>/dev/null; then
+    echo "== disabling $old.service (superseded by plantbot)"
+    sudo systemctl disable --now "$old"
+  fi
+done
+if ! id -nG | grep -qw input; then
+  echo "WARNING: $(id -un) is not in the input group, so mouse drive can't read the mouse."
+  echo "         Fix: sudo usermod -aG input $(id -un) && sudo reboot"
+fi
 echo "== restart"
 sudo systemctl restart plantbot
 echo "== waiting for :8000"

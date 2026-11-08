@@ -1,4 +1,6 @@
 [Unit]
+# SUPERSEDED: plantbot.service now does this itself (plantbot/hal/mouse_drive.py, plantbot/recorder.py)
+# and deploy.sh disables this unit. Only for running without plantbot.
 Description=plantbot mouse tank drive (hold left/right click = left/right wheel forward)
 After=multi-user.target
 # plantbot also drives the motor pins (and grabs the mouse), so only one runs at a time.
