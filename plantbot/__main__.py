@@ -26,6 +26,8 @@ def build_robot(cfg):
     f, devices["fan"] = fan.make(cfg.fan)
     clf, devices["classifier"] = classify.make(cfg.classifier)
     sampler = Sampler(e, cfg.sensing, cfg.env.mq2, csv_path=os.path.join(cfg.store.dir, "sensors.csv"))
+    if cfg.env.driver in (None, "none"):
+        sampler._set_warm("no env sensors fitted")  # nothing to warm up; don't sit in WARMUP
     from plantbot.leaflink import LeafLink
 
     ll = LeafLink(cfg.get("leaflink") or config.Cfg(), sampler)

@@ -114,7 +114,9 @@ class Mission:
             if self.state in DRIVABLE and not self._busy():
                 self.task = asyncio.create_task(self._manual_scan())
         elif cmd == "auto_on":
-            if self.state in DRIVABLE and not self._busy():
+            if self.r.devices.get("ranger") not in ("ok", "mock"):
+                log.warning("auto refused: no rangefinder, it would drive blind")
+            elif self.state in DRIVABLE and not self._busy():
                 self.task = asyncio.create_task(self._auto())
         elif cmd == "auto_off":
             if self.mode == "auto":

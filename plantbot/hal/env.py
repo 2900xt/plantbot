@@ -138,8 +138,18 @@ class MockEnv:
                           45 + random.gauss(0, 0.2), 1012 + random.gauss(0, 0.1))
 
 
+class NoEnv:
+    """No VOC/climate sensors fitted: every value is missing."""
+
+    def read(self) -> EnvReading:
+        nan = float("nan")
+        return EnvReading(time.time(), nan, None, nan, nan, nan)
+
+
 def make(cfg, mock_cfg):
     """Returns (env, status dict)."""
+    if cfg.driver in (None, "none"):
+        return NoEnv(), {"mq2": "none", "bme680": "none"}
     if cfg.driver == "mock":
         return MockEnv(mock_cfg.env_script, mock_cfg.spike), {"mq2": "mock", "bme680": "mock"}
     try:
