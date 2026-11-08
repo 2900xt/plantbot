@@ -6,6 +6,7 @@
 
 Press the mouse wheel down (middle click) -> start a new session folder
 Press it again                           -> stop
+(A press within 0.3 s of a start/stop is ignored: worn switches can register one press twice.)
 Each session goes in Pictures_Test/<start time>/ as 0001.jpg, 0002.jpg, ...
 Resolution comes from config.yaml (camera.width/height).
 
@@ -50,13 +51,16 @@ def find_mouse(name_part=None):
     return None
 
 
+LOCKOUT_S = 0.3  # ignore wheel presses this soon after a start/stop (switch bounce = double press)
+
+
 def wheel_presses(mouse, timeout):
-    """Wait up to `timeout` seconds; return how many wheel presses arrived."""
-    presses = 0
+    """Wait up to `timeout` seconds; return the kernel timestamps of wheel presses that arrived."""
+    presses = []
     if select.select([mouse.fd], [], [], max(0.0, timeout))[0]:
         for e in mouse.read():
             if e.type == ecodes.EV_KEY and e.code == ecodes.BTN_MIDDLE and e.value == 1:
-                presses += 1
+                presses.append(e.timestamp())
     return presses
 
 
@@ -161,10 +165,15 @@ def main():
 
     signal.signal(signal.SIGTERM, on_term)
 
+    last_toggle = float("-inf")
     try:
         while True:
             wait = next_shot - time.monotonic() if session else 3600
-            for _ in range(wheel_presses(mouse, wait)):
+            for pressed_at in wheel_presses(mouse, wait):
+                if pressed_at - last_toggle < LOCKOUT_S:
+                    print(f"  (ignored a 2nd wheel press {pressed_at - last_toggle:.2f} s after the last one)")
+                    continue
+                last_toggle = pressed_at
                 if session is None:
                     session = Path(a.out) / time.strftime("%Y-%m-%d_%H-%M-%S")
                     session.mkdir(parents=True, exist_ok=True)
