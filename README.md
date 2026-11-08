@@ -13,12 +13,6 @@ viewing that restores the previous map position.
 
 ## Current measured status
 
-Real Kaggle Tesla T4 smoke test, 20 full-scene photos: **63.2% accuracy on 19 classified
-photos**, with 10 true positives, 2 true negatives, 7 false positives and 1 unknown
-(no candidates). Correct decisions across all20 submitted photos:60%. On64 separately
-source-annotated leaf regions, classifier-only binary accuracy was **68.75% (44/64)**:
-34 true positives,10 true negatives,17 false positives,3 false negatives.
-
 Median full-image processing: **15.54 seconds**; this serial version does not sustain
 one photo per second. The classifier runs on GPU; the current B2 adapter reloads on CPU
 per image. This convenience test uses source annotations, includes images used during
