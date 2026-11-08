@@ -4,6 +4,8 @@ import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {parseEnv} from 'node:util';
+import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import {gpuPolicy,updateRuntimeEnv,run,setRuntimeFile} from '../scripts/setup-lib.mjs';
 
 test('selects a matching supported CUDA wheel and rejects old drivers/architectures',()=>{
@@ -31,4 +33,15 @@ test('environment update writes only the managed interpreter keys',async t=>{
   const file=path.join(directory,'.env.field');await writeFile(file,'API_TOKEN=keep\nGROUND_DEVICE=cuda\n');
   await setRuntimeFile(file,'/project/.venv-field/bin/python');
   const result=parseEnv(await readFile(file,'utf8'));assert.equal(result.API_TOKEN,'keep');assert.equal(result.GROUND_DEVICE,'cuda');assert.equal(result.PYTHON_BIN,'/project/.venv-field/bin/python');
+});
+test('model check-only verifies local hashes and never downloads missing weights',async t=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'leaflink-model-check-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const script=path.join(directory,'setup-models.mjs');await writeFile(script,await readFile(fileURLToPath(new URL('../setup-models.js',import.meta.url))));
+  const bytes=Buffer.from('verified model fixture'),digest=createHash('sha256').update(bytes).digest('hex');
+  await writeFile(path.join(directory,'model-assets.json'),JSON.stringify({schema:1,assets:[{path:'models/probe.pt',url:'https://github.com/NarwhaLIX/LeafLink/releases/download/probe/probe.pt',sha256:digest,bytes:bytes.length}]}));
+  await assert.rejects(()=>run(process.execPath,[script,'--check'],{capture:true}),/Missing model/);
+  const {mkdir}=await import('node:fs/promises');await mkdir(path.join(directory,'models'));await writeFile(path.join(directory,'models/probe.pt'),bytes);
+  assert.match(await run(process.execPath,[script,'--check'],{capture:true}),/verified/i);
+  await writeFile(path.join(directory,'models/probe.pt'),'corrupt');
+  await assert.rejects(()=>run(process.execPath,[script,'--check'],{capture:true}),/differs from release/);
 });

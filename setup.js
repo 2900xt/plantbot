@@ -12,7 +12,7 @@ const supported=new Set(['--start','--check','--experts','--setup-only']);
 const experts=args.has('--experts'),check=args.has('--check');
 const envFile=path.join(root,experts?'.env.experts':'.env.field');
 const python=path.join(root,'.venv-field',process.platform==='win32'?'Scripts/python.exe':'bin/python');
-const env={...process.env,PYTHONNOUSERSITE:'1',PYTHON_MODULE_PATH:'',UV_PYTHON_INSTALL_DIR:path.join(stateDir,'python'),UV_CACHE_DIR:path.join(stateDir,'cache/uv'),UV_PYTHON_INSTALL_BIN:'0'};
+const env={...process.env,PYTHONNOUSERSITE:'1',PYTHON_MODULE_PATH:'',UV_PYTHON_INSTALL_DIR:path.join(stateDir,'python'),UV_CACHE_DIR:path.join(stateDir,'cache/uv'),UV_PYTHON_INSTALL_BIN:'0',UV_PYTHON_INSTALL_REGISTRY:'0'};
 delete env.PYTHONPATH;
 let locked=false;
 const lock=path.join(stateDir,'setup.lock');
