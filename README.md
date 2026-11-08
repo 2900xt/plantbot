@@ -63,7 +63,7 @@ On the Pi (`ssh taha@vittles.local`, `cd ~/plantbot`):
 
 ## LeafLink (leaf model + field map + Rover tab)
 
-The real leaf model and the team dashboard run in LeafLink (`../LeafLink`) on the RTX 3050 laptop. The rover sends it every scan photo (`POST /api/captures`, device `rover-1`) and a 1 Hz VOC stream (`POST /api/telemetry/voc`, top = plant-side sensor, bottom = background, as `100 * ln(baseline/now)` in BME680 units). LeafLink's Rover tab drives the rover directly over `ws://vittles.local:8000/ws`.
+The real leaf model and the team dashboard run in LeafLink (`leaflink/`, merged from github.com/NarwhaLIX/LeafLink) on the RTX 3050 laptop. The rover sends it every scan photo (`POST /api/captures`, device `rover-1`) and a 1 Hz VOC stream (`POST /api/telemetry/voc`, top = plant-side sensor, bottom = background, as `100 * ln(baseline/now)` in BME680 units). LeafLink's Rover tab drives the rover directly over `ws://vittles.local:8000/ws`.
 
 Turn the uplink on by putting the LeafLink address and API token in `~/plantbot/.env` on the Pi (never in git; deploys don't touch it):
 
