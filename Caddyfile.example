@@ -1,0 +1,7 @@
+# Replace hostname and point its DNS to your server. Caddy obtains HTTPS.
+leaf.example.com {
+    reverse_proxy 127.0.0.1:8080
+    request_body {
+        max_size 13MB
+    }
+}

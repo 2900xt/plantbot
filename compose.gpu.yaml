@@ -1,0 +1,19 @@
+services:
+  leaflink:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    gpus: all
+    env_file: .env.field
+    environment:
+      HOST: 0.0.0.0
+      PYTHON_BIN: python
+      PYTHON_MODULE_PATH: ""
+      DATA_DIR: /app/runtime-field
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - leaflink-field:/app/runtime-field
+    restart: unless-stopped
+volumes:
+  leaflink-field:

@@ -1,0 +1,17 @@
+FROM python:3.12-slim-bookworm
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements-crops.txt requirements-ground.txt ./
+RUN pip install --no-cache-dir torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu130 && pip install --no-cache-dir -r requirements-ground.txt
+COPY package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY dist ./dist
+COPY server ./server
+COPY python ./python
+COPY models ./models
+RUN useradd --uid 10001 --create-home leaflink && mkdir -p /app/runtime-field && chown -R leaflink:leaflink /app/runtime-field
+USER leaflink
+ENV HOST=0.0.0.0 PORT=8080 DATA_DIR=/app/runtime-field PYTHON_BIN=python PYTHON_MODULE_PATH="" MODEL_MODE=gpu LEAF_CROP_MODE=heuristic LEAF_HEURISTIC_VERSION=v2
+EXPOSE 8080
+CMD ["node","server/index.js"]
