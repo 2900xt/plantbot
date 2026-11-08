@@ -1,0 +1,16 @@
+file_uid 15b82978-9d9d-4b8a-be6f-0bf613f0cd52
+paper "A4"
+title_block title "Plant Disease Detection - Existing System Wiring" rev "1" comment 1 "Documentation only - no custom PCB" comment 2 "Raspberry Pi 4 Model B + Logitech USB camera"
+flow ltr
+wiring wires
+block SYSTEM "Raspberry Pi 4B to Logitech camera - existing USB cable" role core
+net USB_VBUS role=power
+comp J1 Connector:USB_A "Pi 4B existing USB-A port" in SYSTEM no_bom no_board no_sim pins (4=GND, 1=USB_VBUS, SH=USB_SHIELD, 3=USB_D_P dir bidi, 2=USB_D_N dir bidi) uid 5758cf36-dc37-4224-8bef-9c5a08e141e2
+comp J2 Connector_Generic:Conn_01x05 "Logitech camera - cable endpoint" in SYSTEM no_bom no_board no_sim pins (3=USB_D_P dir bidi, 5=USB_SHIELD, 1=USB_VBUS, 2=USB_D_N dir bidi, 4=GND) uid a4388026-a1b5-4ac8-a6a5-cc72b096f75a
+text "SYSTEM: Logitech USB camera -> Raspberry Pi 4 Model B -> local image analysis. No environmental sensors or add-on PCB." uid 81bdbdb5-80b8-4bca-8486-5da4c2d2c79b
+text "POWER: Connect the Pi power adapter to its existing USB-C power input. Pi specification: 5 V DC, minimum 3 A supply. Actual adapter model not specified." uid f8a1bdb1-ba81-4423-ba5c-2f0fda887331
+text "J1 represents one existing Pi USB-A port, not an added connector. J2 is a logical cable endpoint, NOT a physical five-pin header or a Logitech internal pinout." uid c6badd19-2393-41e6-9116-66ceaf2dcad7
+text "J2 logical terminals: 1 VBUS, 2 D-, 3 D+, 4 GND, 5 cable shield. Terminal 5 represents the shield, not a fifth USB-A contact." uid 86adaa46-9d1d-42fe-a776-9d947a782f54
+text "USB 2.0 conductors shown only. Logitech model and USB version NEEDS_VERIFY; any SuperSpeed conductors are outside this diagram." uid dab023f1-c5a9-4eea-a6ca-a3270cace95b
+text "Shield continuity is shown separately from signal ground; internal shield bonding and electronics inside the Pi/camera are not modeled." uid 3b947d49-115a-4213-9a6e-0322785939d1
+text "Pi source: https://www.raspberrypi.com/products/raspberry-pi-4-model-b/specifications/" uid 562249c3-04bb-42f7-b704-1caffdcde82f

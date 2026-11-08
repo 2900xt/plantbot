@@ -1,0 +1,5 @@
+## 2026-11-08 07:54 UTC -- Existing system wiring documentation
+- Requested scope: Raspberry Pi 4 Model B and unspecified Logitech USB camera, standalone image-only processing. Wiring schematic only; no add-on PCB, sensors, debug features or simulation.
+- Created J1 (existing Pi USB-A interface) and J2 (generic logical camera cable endpoint), both no_bom/no_board/no_sim. No footprint or purchasable connector is implied. J2 is NOT a physical header or camera internal pinout.
+- Standard-library symbols and pins verified by library lookup and pin fetch: Connector:USB_A 1=VBUS, 2=D-, 3=D+, 4=GND, SH=Shield; Connector_Generic:Conn_01x05 passive terminals 1..5. Nets USB_VBUS, USB_D_N, USB_D_P, GND, USB_SHIELD; J2 terminal 5 represents shield only.
+- Pi official specifications https://www.raspberrypi.com/products/raspberry-pi-4-model-b/specifications/ confirm USB 2.0 ports and 5 V DC via USB-C, minimum 3 A supply. Power connection documented as text; actual adapter unknown. Camera model/USB version unverified; only USB 2.0 conductors modeled and no internal shield-ground bond assumed.
