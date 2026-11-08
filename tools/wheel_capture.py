@@ -7,7 +7,12 @@
 Press the mouse wheel down (middle click) -> start a new session folder
 Press it again                           -> stop
 Each session goes in Pictures_Test/<start time>/ as 0001.jpg, 0002.jpg, ...
-Camera settings (device, resolution) come from config.yaml.
+Resolution comes from config.yaml (camera.width/height).
+
+Every saved photo is a fresh frame from the camera. If the USB camera drops out
+(it can reset and come back as a different /dev/videoN), photos are skipped, not
+faked, and the camera is reopened by its stable /dev/v4l/by-id name as soon as it
+reappears. Never saves mock/synthetic images.
 
 Runs fine next to tools/mouse_drive.py (both just read the mouse).
 Stop the service first (sudo systemctl stop plantbot): it owns the camera.
@@ -16,6 +21,7 @@ On the laptop, run tools/pull_pictures.py --watch to copy photos as they are tak
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import select
 import sys
@@ -28,7 +34,6 @@ import cv2  # noqa: E402
 from evdev import InputDevice, ecodes, list_devices  # noqa: E402
 
 from plantbot import config  # noqa: E402
-from plantbot.hal import camera  # noqa: E402
 
 
 def find_mouse(name_part=None):
@@ -52,6 +57,61 @@ def wheel_presses(mouse, timeout):
     return presses
 
 
+class UsbCamera:
+    """USB webcam that only ever returns fresh frames and reopens itself after a drop-out."""
+
+    def __init__(self, width, height, fallback_index=0):
+        self.width, self.height, self.fallback = width, height, fallback_index
+        self.cap = None
+        self.path = None
+
+    def _device(self) -> str:
+        # Stable name survives the camera re-enumerating as video0 -> video1 after a USB reset.
+        ids = sorted(glob.glob("/dev/v4l/by-id/*-video-index0"))
+        logitech = [p for p in ids if "046d" in p]
+        return (logitech or ids or [f"/dev/video{self.fallback}"])[0]
+
+    def open(self) -> bool:
+        self.close()
+        self.path = self._device()
+        cap = cv2.VideoCapture(self.path, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)  # don't hang if it vanishes mid-read
+        if cap.isOpened() and cap.read()[0]:
+            self.cap = cap
+            return True
+        cap.release()
+        return False
+
+    def fresh_frame(self):
+        """BGR frame captured now, or None if the camera isn't working."""
+        if self.cap is None and not self.open():
+            return None
+        self.cap.grab()  # throw away the buffered (older) frame
+        ok, frame = self.cap.read()
+        if not ok or frame is None:
+            self.close()
+            return None
+        return frame
+
+    def close(self):
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+
+
+def save_jpeg(folder: Path, name: str, frame) -> None:
+    ok, buf = cv2.imencode(".jpg", frame)
+    if not ok:
+        raise RuntimeError("JPEG encode failed")
+    tmp = folder / f".{name}.tmp"   # hidden until complete, so the laptop puller
+    tmp.write_bytes(buf.tobytes())  # never sees half a file
+    os.replace(tmp, folder / name)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--interval", type=float, default=1.0, help="seconds between photos")
@@ -64,42 +124,56 @@ def main():
     if mouse is None:
         sys.exit("No mouse with a wheel button found. Is it plugged into the Pi?")
     cfg = config.load(a.config)
-    cam, status = camera.make(cfg.camera, cfg.mock)
+    cam = UsbCamera(cfg.camera.width, cfg.camera.height, cfg.camera.device)
     print(f"Using mouse: {mouse.name}")
-    print(f"camera {cfg.camera.driver}: {status}")
+    if cam.open():
+        print(f"Camera ok: {cam.path}")
+    else:
+        print("WARNING: camera not found yet; will keep trying (check the USB cable)")
     print("Press the mouse wheel to start/stop taking photos. Ctrl+C to quit.")
 
-    session, count, next_shot = None, 0, 0.0
+    session, count, skipped, next_shot, cam_lost = None, 0, 0, 0.0, False
+
+    def stop_msg():
+        extra = f", {skipped} skipped (camera not working)" if skipped else ""
+        return f"STOP   {count} photos in {session}{extra}"
+
     try:
         while True:
-            wait = next_shot - time.monotonic() if session else None
-            presses = wheel_presses(mouse, wait if wait is not None else 3600)
-            for _ in range(presses):
+            wait = next_shot - time.monotonic() if session else 3600
+            for _ in range(wheel_presses(mouse, wait)):
                 if session is None:
                     session = Path(a.out) / time.strftime("%Y-%m-%d_%H-%M-%S")
                     session.mkdir(parents=True, exist_ok=True)
-                    count, next_shot = 0, time.monotonic()
+                    count, skipped, next_shot = 0, 0, time.monotonic()
                     print(f"START  saving to {session}")
                 else:
-                    print(f"STOP   {count} photos in {session}")
+                    print(stop_msg())
                     session = None
             if session and time.monotonic() >= next_shot:
-                count += 1
-                rgb = cam.capture()
-                ok, buf = cv2.imencode(".jpg", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
-                tmp = session / f".{count:04d}.jpg.tmp"  # hidden until complete, so the
-                tmp.write_bytes(buf.tobytes())           # laptop puller never sees half a file
-                os.replace(tmp, session / f"{count:04d}.jpg")
-                print(f"  saved {count:04d}.jpg")
+                frame = cam.fresh_frame()
+                if frame is None:
+                    skipped += 1
+                    if not cam_lost:
+                        print("  CAMERA LOST - skipping photos, reconnecting... (check the USB cable)")
+                        cam_lost = True
+                else:
+                    if cam_lost:
+                        print(f"  camera back ({cam.path})")
+                        cam_lost = False
+                    count += 1
+                    save_jpeg(session, f"{count:04d}.jpg", frame)
+                    print(f"  saved {count:04d}.jpg")
                 next_shot = max(next_shot + a.interval, time.monotonic())  # no burst if a grab ran slow
     except KeyboardInterrupt:
         if session:
-            print(f"\nSTOP   {count} photos in {session}")
+            print("\n" + stop_msg())
     except OSError as e:  # mouse unplugged
-        print(f"\nMouse disconnected ({e}). {count if session else 0} photos in the last session.")
+        print(f"\nMouse disconnected ({e}).")
+        if session:
+            print(stop_msg())
     finally:
         cam.close()
-        time.sleep(0.3)  # let the camera thread stop before exit (else OpenCV aborts noisily)
 
 
 if __name__ == "__main__":
