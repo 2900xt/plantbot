@@ -1,40 +1,49 @@
 #!/usr/bin/env python3
 """Tank-style mouse control for two brushed DC motors on a TB6612FNG.
 
-Hold LEFT mouse button  -> left motor  (driver channel A) runs forward
-Hold RIGHT mouse button -> right motor (driver channel B) runs forward
-Release a button        -> that motor stops
+Hold LEFT mouse button  -> left wheel runs forward
+Hold RIGHT mouse button -> right wheel runs forward
+Release a button        -> that wheel stops
 Hold both               -> drive straight
 
-GPIO numbers are BCM numbers (physical pin in parentheses):
-  PWMA 13 (33)  AIN1 20 (38)  AIN2 21 (40)
-  PWMB 12 (32)  BIN1  5 (29)  BIN2  6 (31)
-  STBY 26 (37)
+Pins, speed and wheel direction come from config.yaml, the same settings the
+plantbot service uses (motors.hbridge.*, motors.invert_*, mouse_drive.speed),
+so this and the service always agree.
 
-Requires:  sudo apt install -y python3-evdev python3-gpiozero python3-lgpio
-Run:       python3 mouse_drive.py      (use sudo if the mouse gives a
-                                        permission error)
+Stop the service first (it owns the motor pins and grabs the mouse):
+    sudo systemctl stop plantbot
+    .venv/bin/python tools/mouse_drive.py
+Runs fine next to tools/wheel_capture.py (both just read the mouse).
 """
+import os
 import signal
 import sys
 
-from evdev import InputDevice, ecodes, list_devices
-from gpiozero import OutputDevice, PWMOutputDevice
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-SPEED = 0.65  # duty cap: keeps ~6 V motors safe on a ~9 V battery (6 / 9)
+from evdev import InputDevice, ecodes, list_devices  # noqa: E402
+from gpiozero import OutputDevice, PWMOutputDevice  # noqa: E402
+
+from plantbot import config  # noqa: E402
+
+cfg = config.load()
+H = cfg.motors.hbridge
+SPEED = min(float(cfg.mouse_drive.speed), float(cfg.motors.max_speed))
 
 
 class Channel:
     """One TB6612FNG channel: a PWM speed pin plus two direction pins."""
 
-    def __init__(self, pwm_gpio, in1_gpio, in2_gpio):
-        self.pwm = PWMOutputDevice(pwm_gpio)
+    def __init__(self, pwm_gpio, in1_gpio, in2_gpio, invert=False):
+        self.pwm = PWMOutputDevice(pwm_gpio, frequency=H.pwm_hz)
         self.in1 = OutputDevice(in1_gpio)
         self.in2 = OutputDevice(in2_gpio)
+        self.invert = invert
 
     def forward(self):
-        self.in1.on()
-        self.in2.off()
+        a, b = (self.in2, self.in1) if self.invert else (self.in1, self.in2)
+        a.on()
+        b.off()
         self.pwm.value = SPEED
 
     def stop(self):
@@ -59,14 +68,22 @@ def shutdown(*_):
 signal.signal(signal.SIGTERM, shutdown)
 signal.signal(signal.SIGHUP, shutdown)  # SSH connection dropped
 
-stby = OutputDevice(26)
-left = Channel(13, 20, 21)   # PWMA, AIN1, AIN2
-right = Channel(12, 5, 6)    # PWMB, BIN1, BIN2
+if (H.left_in1, H.left_in2, H.left_pwm) == (H.right_in1, H.right_in2, H.right_pwm):
+    sys.exit("config.yaml gives both wheels the same pins; set motors.hbridge left_*/right_* apart.")
+try:
+    stby = OutputDevice(H.stby)
+    left = Channel(H.left_pwm, H.left_in1, H.left_in2, cfg.motors.invert_left)
+    right = Channel(H.right_pwm, H.right_in1, H.right_in2, cfg.motors.invert_right)
+except Exception as e:  # typically "GPIO busy"
+    sys.exit(f"Can't use the motor pins ({e}). Is the plantbot service running? "
+             "Stop it with: sudo systemctl stop plantbot")
 
 mouse = find_mouse()
 if mouse is None:
     sys.exit("No mouse found. Is it plugged into the Pi?")
 print("Using mouse:", mouse.name)
+print(f"left wheel GPIO {H.left_in1}/{H.left_in2}/PWM {H.left_pwm}, "
+      f"right wheel GPIO {H.right_in1}/{H.right_in2}/PWM {H.right_pwm}, speed {SPEED:.0%}")
 print("Hold left/right click to drive. Ctrl+C to quit.")
 
 try:
@@ -78,6 +95,10 @@ try:
             left.forward() if e.value else left.stop()
         elif e.code == ecodes.BTN_RIGHT:
             right.forward() if e.value else right.stop()
+except KeyboardInterrupt:
+    pass
+except OSError as err:
+    print(f"Mouse disconnected ({err}).")
 finally:
     left.stop()
     right.stop()
