@@ -26,20 +26,22 @@ motors:
     min_pulse_ms: 1.0
     max_pulse_ms: 2.0
   hbridge:
-    # Current wiring: AIN1+BIN1 share GPIO20, AIN2+BIN2 share GPIO21, PWMA+PWMB share GPIO13,
-    # so both wheels always get the same command (forward/back only, no steering).
-    # Give the right side its own three pins to get differential steering back.
-    left_in1: 20
-    left_in2: 21
-    left_pwm: 13
+    # Current wiring: each wheel has its own TB6612 channel (differential steering).
+    #   left wheel  = channel B: BIN1 GPIO5 (pin 29), BIN2 GPIO6 (pin 31), PWMB GPIO12 (pin 32)
+    #   right wheel = channel A: AIN1 GPIO20 (pin 38), AIN2 GPIO21 (pin 40), PWMA GPIO13 (pin 33)
+    # (Was: both wheels on 20/21/13, which only ever drove the channel-A motor.)
+    # A wheel spinning backwards: flip invert_left/invert_right above.
+    left_in1: 5
+    left_in2: 6
+    left_pwm: 12
     right_in1: 20
     right_in2: 21
     right_pwm: 13
     stby: 26                   # TB6612 only; null for L298N
     pwm_hz: 1000               # TB6612 takes up to 100 kHz; software PWM on the Pi is fine at 1 kHz
     min_duty: 0.3              # (assumed) duty where a TT motor starts turning on the ground; tune with hw_check
-    # Motor supply (VM): 9 V battery straight to VM (GND shared with the Pi). TT motors are rated 3-6 V,
-    # so keep max_speed/speed modest if they run hot.
+    # Motor supply (VM): 9 V battery through a buck converter set to 6 V (GND shared with the Pi).
+    # TT motors are rated 3-6 V, so full duty (speed 1.0) is safe.
   serial:
     port: /dev/ttyACM0
     baud: 115200
@@ -73,7 +75,7 @@ mouse_drive:                   # tank drive from a USB mouse plugged into the Pi
   enabled: true                # always off in --mock (it would grab the laptop's mouse)
   device: null                 # null = first mouse found; or e.g. /dev/input/event3
   grab: true                   # keep clicks away from any desktop on the Pi
-  speed: 0.6                   # 0..1 per wheel while a button is held
+  speed: 1.0                   # 0..1 per wheel while a button is held (full: motors get 6 V via buck)
   buttons:                     # evdev names; `python -m evdev.evtest` shows what each button sends
     right_fwd: BTN_RIGHT       # mb1 (right click)
     left_fwd: BTN_LEFT         # mb2 (left click)
@@ -168,7 +170,7 @@ tactile:
   buffer_frames: 1000          # ~10 s of history
   arm:
     driver: none               # (not built on the MVP) servo | rover (film on the nose: creep the rover into the leaf) | mock | none
-    pin: 18                    # (unverified) must be a free GPIO; motors use 13/20/21/26, ranger 5/6
+    pin: 18                    # (unverified) must be a free GPIO; motors use 5/6/12/13/20/21/26 (ranger 5/6 would clash with the left motor)
     retract_deg: 0             # (unverified) tune on the rover
     press_deg: 60              # (unverified) far enough to reach a leaf at mission.stop_cm
     min_pulse_ms: 0.5
