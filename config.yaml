@@ -1,4 +1,6 @@
 # plantbot config. Hardware we haven't confirmed is marked (assumed).
+# Skateboard MVP (current build): Pi 4B + TB6612FNG + 2 motors + Logitech USB webcam + USB mouse.
+# Everything else is set to `none` below; switch a driver back on when that part is actually built.
 # Swap drivers/pins here, not in code. `--mock` forces every device to its mock driver.
 
 server:
@@ -35,7 +37,8 @@ motors:
     stby: 26                   # TB6612 only; null for L298N
     pwm_hz: 1000               # TB6612 takes up to 100 kHz; software PWM on the Pi is fine at 1 kHz
     min_duty: 0.3              # (assumed) duty where a TT motor starts turning on the ground; tune with hw_check
-    # Motor supply (VM): ~6 V from a buck converter off the 3S LiPo. TT motors are 3-6 V.
+    # Motor supply (VM): 9 V battery straight to VM (GND shared with the Pi). TT motors are rated 3-6 V,
+    # so keep max_speed/speed modest if they run hot.
   serial:
     port: /dev/ttyACM0
     baud: 115200
@@ -54,7 +57,7 @@ camera:
   jpeg_quality: 75
 
 env:
-  driver: real                 # real = BME680 + MQ-2 via ADS1115; mock
+  driver: none                 # real = BME680 + MQ-2 via ADS1115 | mock | none (not built on the MVP)
   i2c_bus: 1
   bme680_address: 0x77         # 0x77 Adafruit, 0x76 generic. Check with `i2cdetect -y 1`
   ads1115_address: 0x48
@@ -77,13 +80,13 @@ mouse_drive:                   # tank drive from a USB mouse plugged into the Pi
     left_back: BTN_SIDE        # mb4 (thumb/back button)
 
 ranger:
-  driver: hcsr04               # hcsr04 | none | mock
+  driver: none                 # hcsr04 | none | mock (not built on the MVP; auto mode needs it)
   trig_pin: 5
   echo_pin: 6                  # 5V echo: divide to 3.3V!
   max_cm: 200
 
 fan:
-  driver: none                 # gpio | none | mock. Off: GPIO26 is now motor STBY; pick a free pin to re-enable
+  driver: none                 # gpio | none | mock (not built on the MVP; GPIO26 is motor STBY now)
   pin: 26
 
 sensing:
@@ -156,14 +159,14 @@ store:
 tactile:
   # TouchTronix SensX25 5x5 pressure film on its FT232 USB adapter (921600 8N1, ~100 Hz).
   # sensx25 = built-in reader | vendor = their sensx25.py frames() | mock | none
-  driver: sensx25
+  driver: none                 # (not built on the MVP) sensx25
   port: /dev/ttyUSB0           # `ls /dev/ttyUSB*`; needs `sudo usermod -aG dialout $USER`
   vendor_path: sensx25.py      # only for driver: vendor
   mode: pressure               # pressure (0-534, as shipped) | adc (0-3945). Return the kit in pressure mode!
   noise_floor: 0               # per-pixel counts zeroed after the baseline
   buffer_frames: 1000          # ~10 s of history
   arm:
-    driver: servo              # servo | rover (film on the nose: creep the rover into the leaf) | mock | none
+    driver: none               # (not built on the MVP) servo | rover (film on the nose: creep the rover into the leaf) | mock | none
     pin: 18                    # (unverified) must be a free GPIO; motors use 13/20/21/26, ranger 5/6
     retract_deg: 0             # (unverified) tune on the rover
     press_deg: 60              # (unverified) far enough to reach a leaf at mission.stop_cm
@@ -172,7 +175,7 @@ tactile:
     mock_travel_mm: 8.0
     mock_gap_mm: 3.0
   turgor:
-    enabled: true              # press the leaf during every scan (after the photo)
+    enabled: false             # (not built on the MVP) press the leaf during every scan (after the photo)
     contact_on: 20             # (unverified) a.u. pixel-sum: contact starts
     contact_off: 10
     ref_force: 250             # (unverified) a.u.: read contact pressure at this force
