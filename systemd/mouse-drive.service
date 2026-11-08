@@ -1,0 +1,22 @@
+[Unit]
+Description=plantbot mouse tank drive (hold left/right click = left/right wheel forward)
+After=multi-user.target
+# plantbot also drives the motor pins (and grabs the mouse), so only one runs at a time.
+Conflicts=plantbot.service
+
+[Service]
+# @USER@ and @DIR@ get filled in on install, e.g.:
+#   sed -e "s|@USER@|$(id -un)|g" -e "s|@DIR@|$HOME/plantbot|g" systemd/mouse-drive.service \
+#     | sudo tee /etc/systemd/system/mouse-drive.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mouse-drive
+# Logs: journalctl -u mouse-drive -f
+# Stopping the service (SIGTERM) stops both motors and pulls STBY low.
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/.venv/bin/python tools/mouse_drive.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
