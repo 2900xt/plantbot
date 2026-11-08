@@ -31,7 +31,29 @@ def build_robot(cfg):
     ll = LeafLink(cfg.get("leaflink") or config.Cfg(), sampler)
     devices["leaflink"] = "ok" if ll.enabled else "disabled"
     ll.start()
-    return Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices, ll)
+    from plantbot.integrations.sinks import build_fanout
+
+    sinks = build_fanout(cfg, sampler, store_root=cfg.store.dir)  # no-op unless TIGERDATA_URL / SNOWFLAKE_* / SOLANA_KEYPAIR
+    devices["sinks"] = ",".join(r.sink.name for r in sinks.runners) or "disabled"
+    sinks.start()
+
+    from plantbot.hal import probe_arm, tactile
+    from plantbot.integrations.zelos_pub import ZelosPublisher
+    from plantbot.sensing.bumper import ContactGuard, GuardedMotors
+
+    tcfg = cfg.get("tactile")
+    tac, devices["tactile"] = tactile.make(tcfg)
+    if hasattr(tac, "set_leaf") and cfg.mock.get("leaf_turgor") is not None:
+        tac.set_leaf(cfg.mock.leaf_turgor)
+    arm, devices["probe_arm"] = probe_arm.make(tcfg.get("arm") if tcfg else None, tac, mock=cfg.mock_mode)
+    guard = ContactGuard(tac, m, tcfg.get("bumper") if tcfg else None,
+                         csv_path=os.path.join(cfg.store.dir, "contacts.csv"))
+    m = GuardedMotors(m, guard)  # bumper: forward drive refused while the nose is touching something
+    devices["bumper"] = "armed" if guard.armed and devices["tactile"] in ("ok", "mock") else "off"
+    zel = ZelosPublisher(cfg.get("zelos"), tactile=tac, guard=guard)
+    devices["zelos"] = "ok" if zel.enabled else (zel.error or "disabled")
+    return Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices, ll, sinks,
+                 tactile=tac, arm=arm, guard=guard, zelos=zel)
 
 
 def _ips() -> list[str]:
@@ -67,6 +89,10 @@ def main() -> None:
     from plantbot.web.server import make_app
 
     mission = Mission(robot)
+    robot.guard.on_trip = mission.on_bump_trip      # tactile reader thread -> mission
+    robot.guard.on_event = mission.on_bump
+    robot.zelos.mission = mission
+    robot.zelos.start()
     app = make_app(mission)
     host, port = a.host or cfg.server.host, a.port or cfg.server.port
     for ip in _ips() + ["localhost"]:

@@ -3,7 +3,11 @@ bme680                              # Pimoroni BME680 lib (works with Adafruit b
 adafruit-circuitpython-ads1x15      # ADS1115 for the MQ-2
 adafruit-blinka
 evdev                               # USB mouse tank drive (hal/mouse_drive.py)
-pyserial                            # only if motors.driver: serial (Arduino)
+pyserial==3.5                       # SensX25 tactile film (FT232 -> /dev/ttyUSB0); also motors.driver: serial
+# Optional sponsor sinks (plantbot/integrations); each is skipped if its package or env key is missing
+psycopg[binary]==3.3.8              # Tiger Data (cp313 aarch64 wheel)
+solders==0.29.0                     # Solana devnet certificates (abi3 aarch64 wheel)
+# Zelos live telemetry is heavier (pyarrow); install by hand: .venv/bin/pip install -r requirements-zelos.txt
 # Model runtime: install whichever one installs on our Pi OS (test at M1)
 # ai-edge-litert
 # tflite-runtime

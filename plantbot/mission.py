@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from plantbot import fusion
+from plantbot.sensing import turgor
 from plantbot.vision.isolate import isolate
 
 log = logging.getLogger(__name__)
@@ -37,9 +38,14 @@ class Robot:
     store: Any
     devices: dict = field(default_factory=dict)
     leaflink: Any = None
+    sinks: Any = None  # plantbot.integrations.sinks.FanOut
+    tactile: Any = None
+    arm: Any = None
+    guard: Any = None
+    zelos: Any = None
 
     def close(self) -> None:
-        for d in (self.motors, self.camera, self.sampler, self.leaflink):
+        for d in (self.zelos, self.arm, self.sinks, self.motors, self.camera, self.sampler, self.leaflink, self.tactile):
             if d is None:
                 continue
             try:
@@ -61,6 +67,8 @@ class Mission:
         self.task: asyncio.Task | None = None  # current scan or auto run
         self.cancel = threading.Event()  # tells sniff threads to bail on E-stop
         self.broadcast: Callable[[dict], Awaitable[None]] = self._no_broadcast
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.last_turgor: dict | None = None
 
     @staticmethod
     async def _no_broadcast(msg: dict) -> None:
@@ -75,6 +83,7 @@ class Mission:
     # ---------- lifecycle ----------
     async def run(self) -> None:
         """Background tick: warm-up transition and range polling."""
+        self.loop = asyncio.get_running_loop()
         self.set_state("WARMUP")
         while True:
             try:
@@ -119,6 +128,20 @@ class Mission:
             spike = getattr(self.r.env, "spike", None)
             if spike:
                 spike()
+        elif cmd == "probe":  # touch-only: press the leaf, report turgor, no photo/sniff
+            if self.state in DRIVABLE and not self._busy():
+                self.task = asyncio.create_task(self._probe_only())
+        elif cmd == "turgor_cal":  # {"cmd":"turgor_cal","kind":"turgid"|"wilted"}: uses the last probe
+            if self.last_turgor and self.last_turgor.get("pressure_at_ref") is not None:
+                turgor.calibrate(msg.get("kind", "turgid"), turgor.TurgorResult(**self.last_turgor), self._tcfg())
+        elif cmd == "mock_bump":
+            poke = getattr(self.r.tactile, "poke", None)
+            if poke:
+                poke()
+        elif cmd == "mock_leaf":  # {"cmd":"mock_leaf","turgor":0.2}
+            set_leaf = getattr(self.r.tactile, "set_leaf", None)
+            if set_leaf:
+                set_leaf(float(msg.get("turgor", 0.8)))
         else:
             log.warning("unknown message %s", msg)
 
@@ -138,6 +161,52 @@ class Mission:
         self.mode = "manual"
         self.error = f"E-STOP: {why}"
         self.set_state("ESTOP")
+
+    # ---------- touch (SensX25) ----------
+    def _tcfg(self):
+        t = self.r.cfg.get("tactile")
+        return t.get("turgor") if t is not None else None
+
+    def _touch_enabled(self) -> bool:
+        tc = self._tcfg()
+        return (self.r.tactile is not None and getattr(self.r.arm, "kind", "none") != "none"
+                and self.r.devices.get("tactile") in ("ok", "mock") and bool(tc is None or tc.get("enabled", True)))
+
+    def _touch(self) -> dict:
+        """Worker thread: press the leaf, return the TurgorResult as a dict."""
+        res = turgor.probe(self.r.tactile, self.r.arm, self._tcfg(), motors=self.r.motors, guard=self.r.guard,
+                           cancel=self.cancel)
+        self.last_turgor = res.to_dict()
+        return self.last_turgor
+
+    async def _probe_only(self) -> None:
+        self.cancel = threading.Event()
+        prev = self.state
+        try:
+            self.set_state("PROBE")
+            self.r.motors.stop()
+            res = await asyncio.to_thread(self._touch)
+            await self.broadcast({"turgor": res})
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.exception("probe failed")
+            self.error = f"probe failed: {e}"
+        finally:
+            if self.state == "PROBE":
+                self.set_state(prev if prev in DRIVABLE else "IDLE")
+
+    def on_bump_trip(self, e: dict) -> None:
+        """Tactile reader thread, at the moment of contact (motors already stopped by the guard)."""
+        if self.loop and self.mode == "auto":
+            asyncio.run_coroutine_threadsafe(self.estop("bumper contact"), self.loop)
+
+    def on_bump(self, e: dict) -> None:
+        """Tactile reader thread, on release: log to Zelos and the dashboard."""
+        if self.r.zelos:
+            self.r.zelos.publish_bump(e)
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self.broadcast({"bump": e}), self.loop)
 
     # ---------- scan ----------
     def _vision(self) -> dict:
@@ -164,12 +233,21 @@ class Mission:
             raise
         await self.broadcast({"scan_progress": {"id": scan_id, "label": vis["pred"].label,
                                                 "p_healthy": vis["pred"].p_healthy}})
+        # touch after the photo (so the arm isn't in it), during the sniff window
+        touch = asyncio.create_task(asyncio.to_thread(self._touch)) if self._touch_enabled() else None
         voc = await sniff
+        try:
+            touch_res = await touch if touch else None
+        except Exception as e:
+            log.warning("turgor probe failed: %s", e)
+            touch_res = None
 
         self.set_state("ANALYZE")
         pred, iso = vis["pred"], vis["iso"]
         fused = fusion.fuse(pred.p_healthy, voc["mq2_ratio"], voc["gas_ratio"], self.r.cfg.fusion,
                             diff_ratio=voc["diff_ratio"] if voc["diff_calibrated"] else None)
+        if touch is not None:
+            fused = turgor.fuse_with_turgor(fused, touch_res, self._tcfg(), self.r.cfg.fusion)
         rec = {
             "id": scan_id, "t": t, "mode": mode,
             "label": pred.label, "p_healthy": round(pred.p_healthy, 4), "probs": pred.probs,
@@ -180,12 +258,17 @@ class Mission:
             "isolation": iso.method, "bbox": iso.bbox, "blob_frac": iso.blob_frac,
             "infer_ms": round(pred.ms, 1), "backend": pred.backend,
             "voc": voc, "range_cm": self.range_cm,
+            "turgor_index": fused.get("turgor_index"), "turgor": touch_res,
         }
         self.set_state("REPORT")
         rec = await asyncio.to_thread(self.r.store.save, rec, vis["raw"], iso.mask_vis, iso.crop)
         self.last_scan = rec
         if self.r.leaflink:
             self.r.leaflink.submit_scan(scan_id, os.path.join(self.r.store.root, scan_id, "raw.jpg"), t)
+        if self.r.sinks:
+            self.r.sinks.on_scan(rec, os.path.join(self.r.store.root, scan_id, "raw.jpg"))
+        if self.r.zelos:
+            self.r.zelos.publish_scan(rec)
         log.info("scan %s: %s %.0f (%s)", scan_id, rec["status"], rec["health"], rec["explain"])
         await self.broadcast({"scan": rec})
         return rec
@@ -240,6 +323,15 @@ class Mission:
             await self.estop(f"auto error: {e}")
 
     # ---------- telemetry ----------
+    def _tactile_telemetry(self) -> dict | None:
+        t = self.r.tactile
+        if t is None or not hasattr(t, "status"):
+            return None
+        st = t.status()
+        f = t.latest()
+        st["grid"] = None if f is None else f.grid.astype(int).tolist()  # 25 ints for a dashboard heatmap
+        return st
+
     def telemetry(self) -> dict:
         s = self.r.sampler
         with s.lock:
@@ -255,5 +347,10 @@ class Mission:
             "watchdog_trips": self.r.motors.watchdog_trips,
             "devices": self.r.devices, "error": self.error, "auto_scans": self.auto_scans,
             "leaflink": self.r.leaflink.status() if self.r.leaflink else None,
+            "sinks": self.r.sinks.status() if self.r.sinks else None,
+            "tactile": self._tactile_telemetry(),
+            "bumper": self.r.guard.status() if self.r.guard else None,
+            "last_turgor": None if not self.last_turgor else {k: self.last_turgor.get(k) for k in
+                                                               ("turgor_index", "label", "peak_force", "flags")},
             "t": time.time(),
         }

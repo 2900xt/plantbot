@@ -153,6 +153,52 @@ mission:
 store:
   dir: scans
 
+tactile:
+  # TouchTronix SensX25 5x5 pressure film on its FT232 USB adapter (921600 8N1, ~100 Hz).
+  # sensx25 = built-in reader | vendor = their sensx25.py frames() | mock | none
+  driver: sensx25
+  port: /dev/ttyUSB0           # `ls /dev/ttyUSB*`; needs `sudo usermod -aG dialout $USER`
+  vendor_path: sensx25.py      # only for driver: vendor
+  mode: pressure               # pressure (0-534, as shipped) | adc (0-3945). Return the kit in pressure mode!
+  noise_floor: 0               # per-pixel counts zeroed after the baseline
+  buffer_frames: 1000          # ~10 s of history
+  arm:
+    driver: servo              # servo | rover (film on the nose: creep the rover into the leaf) | mock | none
+    pin: 18                    # (unverified) must be a free GPIO; motors use 13/20/21/26, ranger 5/6
+    retract_deg: 0             # (unverified) tune on the rover
+    press_deg: 60              # (unverified) far enough to reach a leaf at mission.stop_cm
+    min_pulse_ms: 0.5
+    max_pulse_ms: 2.5
+    mock_travel_mm: 8.0
+    mock_gap_mm: 3.0
+  turgor:
+    enabled: true              # press the leaf during every scan (after the photo)
+    contact_on: 20             # (unverified) a.u. pixel-sum: contact starts
+    contact_off: 10
+    ref_force: 250             # (unverified) a.u.: read contact pressure at this force
+    target_force: 400          # (unverified) stop pressing here (gentle)
+    max_peak: 500              # abort if any pixel nears saturation (534)
+    ramp_s: 2.5
+    hold_s: 0.5
+    turgid_ref: 55             # (unverified, mock-derived) a.u./px; calibrate on a watered leaf
+    wilted_ref: 12             # (unverified, mock-derived) a.u./px; calibrate on a wilted leaf
+    push_speed: 0.18           # arm.driver: rover only
+    calibration: calibration/turgor.json
+    w_turgor: 0.25             # weight in the fused health score
+  bumper:
+    enabled: false             # true when the film is on the nose (arm.driver: rover)
+    stop_force: 60             # (unverified) a.u. pixel-sum = bump
+    release_force: 20
+    debounce_frames: 2
+    hold_s: 1.0                # forward drive stays blocked this long after release (reverse always OK)
+
+zelos:
+  # Live signals to the Zelos desktop app (zeloscloud.io). pip install zelos-sdk. No SDK = off.
+  enabled: true
+  url: null                    # null = $ZELOS_AGENT_URL or http://localhost:2300; e.g. grpc://<laptop-ip>:2300
+  rate_hz: 10
+  tactile_hz: 50
+
 leaflink:
   # LeafLink server (GPU laptop: real leaf model + field map). URL and token come from the
   # environment, LEAFLINK_URL and LEAFLINK_TOKEN (on the Pi: ~/plantbot/.env). Unset = off.
@@ -163,6 +209,41 @@ leaflink:
   timeout_s: 10
   lat: null                    # optional fixed field position; no GPS on the rover
   lon: null
+
+gemini:
+  # Plant Doctor (multimodal diagnosis per scan) + natural-language commands. Key from the
+  # environment, GEMINI_API_KEY (Pi: ~/plantbot/.env). No key = off, rover unchanged.
+  enabled: true
+  model: gemini-3.6-flash      # stable Flash; gemini-3.5-flash-lite = faster, gemini-3.8-flash = smarter
+  command_model: null          # null = same as model
+  thinking_level: low          # minimal | low | medium | high | null (model default). Low keeps latency ~seconds
+  timeout_s: 15
+  auto_diagnose: true          # diagnose every scan in the background and push it to the dashboard
+  mock: auto                   # auto = canned diagnosis + keyword commands when --mock and no key; true | false
+  command:
+    max_actions: 8
+    max_speed: 0.5             # on top of motors.max_speed
+    drive_speed: 0.4
+    turn_speed: 0.45
+    cm_per_s: 12.0             # (unverified) measure: drive_speed for 2 s, divide distance by 2
+    deg_per_s: 110.0           # (unverified) measure: time a full spin at turn_speed
+    max_segment_s: 3.0
+    max_motion_s: 15.0         # total drive+turn seconds per command, return trip included
+    max_scans: 3
+    scan_timeout_s: 40
+
+integrations:
+  # Optional cloud sinks (plantbot/integrations/). Each is OFF unless its env var is set in ~/plantbot/.env.
+  enabled: true
+  rover_id: null               # default: leaflink.device
+  reading_hz: 10               # env samples forwarded per second (sampler runs at sensing.sample_hz)
+  tigerdata:                   # needs TIGERDATA_URL
+    flush_s: 2
+    buffer_max: 6000           # ~10 min at 10 Hz kept while offline; oldest dropped
+  snowflake:                   # needs SNOWFLAKE_ACCOUNT + SNOWFLAKE_PAT
+    flush_s: 60
+  solana:                      # needs SOLANA_KEYPAIR (devnet only)
+    confirm_s: 20
 
 mock:
   camera: folder               # folder | opencv  (--camera overrides)
@@ -175,5 +256,6 @@ mock:
     - {t: 40, duration: 12, mq2_dv: 0.35, gas_scale: 0.6}
   # Dashboard "Mock VOC spike" button uses these
   spike: {duration: 12, mq2_dv: 0.4, gas_scale: 0.85}
+  leaf_turgor: 0.8             # MockTactile leaf (0 wilted .. 1 turgid); {"cmd":"mock_leaf"} changes it
   plant_spacing_cm: 60         # MockRanger: plants along a virtual row
   speed_cm_s: 30               # MockRanger: cm/s at drive(1, 1)

@@ -43,6 +43,8 @@ def make_app(mission) -> FastAPI:
         for t in tasks:
             t.cancel()
         robot.motors.stop()
+        if robot.zelos:
+            robot.zelos.close()
 
     app = FastAPI(title="plantbot", lifespan=lifespan)
 
@@ -103,6 +105,19 @@ def make_app(mission) -> FastAPI:
     async def status():
         return _clean(mission.telemetry())
 
+    @app.get("/api/tactile")
+    async def tactile_now(seconds: float = 0.0):
+        """Latest SensX25 frame, bumper state, last turgor probe; ?seconds=N adds a force history."""
+        t = robot.tactile
+        if t is None:
+            raise HTTPException(404, "no tactile device")
+        f = t.latest()
+        out = {**t.status(), "grid": None if f is None else f.grid.astype(int).tolist(),
+               "last_turgor": mission.last_turgor, "bumper": robot.guard.status() if robot.guard else None}
+        if seconds > 0:
+            out["history"] = [[round(h.t, 3), h.total, round(h.area, 2)] for h in t.history(min(seconds, 10))]
+        return _clean(out)
+
     @app.get("/api/scans")
     async def scans(limit: int = 100):
         return _clean(robot.store.list(limit))
@@ -114,5 +129,8 @@ def make_app(mission) -> FastAPI:
             raise HTTPException(404)
         return _clean(rec)
 
+    from plantbot.web.gemini_routes import install_gemini
+
+    install_gemini(app, mission)  # Plant Doctor + NL commands: /gemini, /api/gemini/*
     app.mount("/scans", StaticFiles(directory=robot.store.root), name="scans")
     return app

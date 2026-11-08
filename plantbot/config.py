@@ -43,6 +43,8 @@ def load(path: str | Path | None = None, mock: bool = False, camera: str | None 
         cfg.env.driver = "mock"
         cfg.ranger.driver = "mock"
         cfg.fan.driver = "mock"
+        if cfg.get("tactile") is not None:
+            cfg.tactile.driver = "mock"
         cfg.camera.driver = cfg.mock.camera
         cfg.sensing.warmup_s = cfg.mock.warmup_s
         cfg.sensing.warmup_min_s = min(cfg.sensing.warmup_min_s, cfg.mock.warmup_s)
@@ -50,7 +52,8 @@ def load(path: str | Path | None = None, mock: bool = False, camera: str | None 
         cfg.camera.driver = camera
     # Relative paths are relative to the repo root, so systemd/cwd don't matter.
     for section, key in (("store", "dir"), ("classifier", "model"), ("classifier", "labels"),
-                         ("mock", "camera_folder"), ("sensing.differential", "calibration")):
+                         ("mock", "camera_folder"), ("sensing.differential", "calibration"),
+                         ("tactile.turgor", "calibration")):
         sec = cfg
         for part in section.split("."):
             sec = sec.get(part)
