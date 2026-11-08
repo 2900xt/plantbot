@@ -1,6 +1,7 @@
 """Cameras. Each runs a background thread that keeps the latest frame and a lores JPEG."""
 from __future__ import annotations
 
+import glob
 import logging
 import threading
 import time
@@ -36,6 +37,7 @@ class _ThreadedCamera:
         self.cfg = cfg
         self.lock = threading.Lock()
         self.frame: np.ndarray | None = None
+        self.frame_at = 0.0  # time.monotonic() when self.frame arrived
         self.jpeg = encode_jpeg(placeholder(cfg.lores_width, cfg.lores_height, "camera starting"))
         self._running = True
         self.thread = threading.Thread(target=self._loop, name="camera", daemon=True)
@@ -55,7 +57,7 @@ class _ThreadedCamera:
                 rgb = self._grab()
                 jpeg = encode_jpeg(self._lores(rgb), self.cfg.jpeg_quality)
                 with self.lock:
-                    self.frame, self.jpeg = rgb, jpeg
+                    self.frame, self.jpeg, self.frame_at = rgb, jpeg, time.monotonic()
             except Exception as e:
                 log.warning("camera grab failed: %s", e)
                 time.sleep(0.5)
@@ -64,6 +66,12 @@ class _ThreadedCamera:
     def lores_jpeg(self) -> bytes:
         with self.lock:
             return self.jpeg
+
+    def latest(self) -> tuple[np.ndarray, float] | None:
+        """(copy of the newest frame, time.monotonic() it arrived), or None before the first frame.
+        Unlike capture(), lets callers tell a fresh frame from a stale one (camera dropped out)."""
+        with self.lock:
+            return None if self.frame is None else (self.frame.copy(), self.frame_at)
 
     def capture(self) -> np.ndarray:
         for _ in range(50):
@@ -82,18 +90,37 @@ class OpenCVCamera(_ThreadedCamera):
 
     def __init__(self, cfg):
         super().__init__(cfg)
-        self.cap = cv2.VideoCapture(cfg.device)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.height)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.cap = self._open()
         ok, _ = self.cap.read()
         if not ok:
-            raise RuntimeError(f"cannot read from /dev/video{cfg.device}")
+            raise RuntimeError(f"cannot read from {self.source}")
+
+    def _source(self):
+        # A USB reset re-enumerates the webcam as a new /dev/videoN; its /dev/v4l/by-id name
+        # stays the same. Prefer it (Logitech first) on Linux; elsewhere use the configured index.
+        ids = sorted(glob.glob("/dev/v4l/by-id/*-video-index0"))
+        if isinstance(self.cfg.device, int) and ids:
+            return ([p for p in ids if "046d" in p] or ids)[0]
+        return self.cfg.device
+
+    def _open(self):
+        self.source = self._source()
+        if isinstance(self.source, str):
+            cap = cv2.VideoCapture(self.source, cv2.CAP_V4L2)
+        else:
+            cap = cv2.VideoCapture(self.source)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.cfg.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cfg.height)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
 
     def _grab(self) -> np.ndarray:
         ok, bgr = self.cap.read()
         if not ok:
-            raise RuntimeError("read failed")
+            # Dropped off USB (or hiccuped): reopen it; the camera loop retries in 0.5 s.
+            self.cap.release()
+            self.cap = self._open()
+            raise RuntimeError(f"read failed; reopened {self.source}")
         return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
     def close(self) -> None:
