@@ -1,0 +1,6 @@
+{
+  "appId": "org.leaflink.app",
+  "appName": "LeafLink",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" }
+}

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#164c38" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Capture a leaf, follow its journey, and review your model's verdict." />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <title>LeafLink · Plant health</title>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="/" aria-label="LeafLink home"><span class="logo">↗</span>LeafLink<span class="brand-dot">.</span></a><button id="settings-toggle" class="subtle" aria-expanded="false" aria-controls="settings">Connection <span id="connection-dot" class="dot"></span></button></header>
+    <section id="settings" class="settings" hidden>
+      <h2>Connect your pipeline</h2>
+      <p>Use your server address and API token. The same connection receives Raspberry Pi captures.</p>
+      <form id="connection-form">
+        <label>Server URL<input id="server-url" type="url" placeholder="https://leaf.example.com" autocomplete="url" /></label>
+        <label>API token<input id="api-token" type="password" autocomplete="off" required minlength="24" placeholder="Paste your server token" /></label>
+        <label class="check"><input id="remember" type="checkbox" /> Remember token on this device</label>
+        <div class="actions"><button class="primary" type="submit">Connect</button><button type="button" id="disconnect" class="subtle">Disconnect</button></div>
+      </form>
+    </section>
+    <section class="hero">
+      <div class="eyebrow"><span class="tiny-leaf">✳</span> FROM LEAF TO INSIGHT</div>
+      <h1>A closer look.<br /><em>A healthier garden.</em></h1>
+      <p>Capture a leaf with your phone or Raspberry Pi.<br class="desktop-break" /> Follow it from the camera to your plant health model.</p>
+      <div class="tags"><span>Phone camera</span><span>Raspberry Pi</span><span>Private storage</span></div>
+    </section>
+    <div id="notice" class="notice" role="status" aria-live="polite">Connect your server to start capturing.</div>
+    <section id="activity" class="activity" aria-label="Live pipeline activity">
+      <div class="activity-top"><span id="activity-light" class="activity-light" aria-hidden="true"></span><div class="activity-copy"><strong id="activity-title">Ready to connect</strong><p id="activity-message" role="status" aria-live="polite">Connect to the server before starting a field scan.</p></div><span id="activity-time" class="activity-time" aria-live="off">—</span></div>
+      <progress id="activity-progress" max="6" value="0" aria-label="Pipeline stages completed"></progress>
+      <div class="activity-bottom"><span id="activity-step">Upload → store → ground mask → separate → classify → results</span><span id="activity-contact">No server contact yet</span></div>
+    </section>
+    <section class="workspace">
+      <article class="capture-panel">
+        <div class="section-heading"><div><div class="eyebrow">01 / CAPTURE</div><h2>Start with a leaf</h2></div><span class="pill">NEW SCAN</span></div>
+        <div id="preview-area" class="preview-area">
+          <img id="preview" alt="Selected leaf" hidden />
+          <div id="capture-hint"><span class="leaf-drawing" aria-hidden="true">❧</span><h3>A little light goes a long way.</h3><p>Choose one leaf, fill the frame,<br />and keep the camera steady.</p></div>
+        </div>
+        <input id="camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
+        <input id="library" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+        <div class="capture-buttons"><button id="take-photo" class="primary">⊕ &nbsp; Take a photo</button><button id="choose-photo" class="secondary">Upload image</button></div>
+        <label id="mask-field" class="mask-field" hidden>SegFormer-B2 ground mask (binary PNG)<input id="ground-mask" type="file" accept="image/png" /><span>Optional in local mode. Must match the oriented photo’s dimensions.</span></label>
+        <button id="send-photo" class="primary full" hidden>Send for analysis ↗</button>
+        <p class="fine-print">JPEG, PNG or WebP · Up to 12 MB<br />If your phone saves HEIC, choose a compatible JPEG export.</p>
+      </article>
+      <article class="journey-panel">
+        <div class="section-heading"><div><div class="eyebrow">02 / PIPELINE</div><h2>Every step, in view</h2></div><span id="pipeline-mode" class="pill">NOT CONNECTED</span></div>
+        <ol class="journey"><li id="step-capture"><span class="step-number">1</span><div><h3>Image captured</h3><p>Your phone or Raspberry Pi sends a photo.</p></div><span class="step-mark"></span></li><li id="step-storage"><span class="step-number">2</span><div><h3>Stored securely</h3><p id="storage-description">Your image passes through private storage.</p></div><span class="step-mark"></span></li><li id="step-leaves"><span class="step-number">3</span><div><h3>Separate leaf candidates</h3><p>SegFormer-B2 ground mask → leaf crops.</p></div><span class="step-mark"></span></li><li id="step-model"><span class="step-number">4</span><div><h3>Model analysis</h3><p>Each stored 384 × 384 leaf crop is analyzed.</p></div><span class="step-mark"></span></li><li id="step-verdict"><span class="step-number">5</span><div><h3>Your verdicts</h3><p>A separate disease result for each candidate.</p></div><span class="step-mark"></span></li></ol>
+        <div id="result" class="result" aria-live="polite"><span class="result-symbol">↗</span><div><h3>Ready when you are</h3><p>Your capture’s progress and result will appear here.</p></div></div>
+      </article>
+    </section>
+    <section id="leaf-section" class="leaf-section" hidden><div class="section-heading"><div><div class="eyebrow">SEPARATED FOR ANALYSIS</div><h2 id="leaf-heading">Leaf candidates</h2></div><span class="pill">384 × 384 RGB</span></div><p id="leaf-note"></p><div id="leaf-grid" class="leaf-grid"></div></section>
+    <section class="history"><div class="section-heading"><div><div class="eyebrow">YOUR FIELD NOTES</div><h2>Recent captures</h2></div><button id="refresh" class="subtle">↻ &nbsp; Refresh</button></div><div id="capture-list" class="capture-list"><p class="empty">Your next observation starts here. Phone and Raspberry Pi captures appear together.</p></div></section>
+    <footer><span>LeafLink / Plant health pipeline</span><span id="footer-mode">Camera → storage → model → insight</span></footer>
+  </main>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

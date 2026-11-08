@@ -1,0 +1,4 @@
+-r requirements-crops.txt
+torch>=2.6,<3
+torchvision>=0.21,<1
+transformers>=4.40,<5
