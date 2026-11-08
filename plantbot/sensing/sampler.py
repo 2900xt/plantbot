@@ -11,6 +11,7 @@ import time
 
 from plantbot.hal.env import EnvReading, mq2_rs_kohm
 from plantbot.sensing.crosscal import CrossCal, differential, log_ratio
+from plantbot.sensing.voc_drift import DriftDetector
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class Sampler:
         diff_cfg = cfg.get("differential")
         self.plant_sensor = diff_cfg.plant_sensor if diff_cfg else "mq2"
         self.crosscal = CrossCal.load(diff_cfg.calibration if diff_cfg else None)
+        drift_cfg = cfg.get("drift")
+        self.drift = DriftDetector(drift_cfg) if drift_cfg and drift_cfg.get("enabled", True) else None
         self._running = True
         threading.Thread(target=self._loop, name="sampler", daemon=True).start()
 
@@ -160,6 +163,10 @@ class Sampler:
                     if not self.warm:
                         self._check_warm(t0)
                     self._update_baseline()
+                    sm = dict(self.smooth)
+                if self.drift:
+                    self.drift.update(t0, self.rs(sm["mq2_v"]), sm["gas_ohms"], sm["rh"], sm["temp_c"],
+                                      ready=self.warm)
                 if writer and t0 - last_csv >= 1.0 / self.cfg.csv_hz:
                     last_csv = t0
                     rt = self.ratios()

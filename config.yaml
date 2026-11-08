@@ -110,6 +110,27 @@ sensing:
   differential:
     plant_sensor: mq2          # mq2 | bme680: which sensor faces the plant
     calibration: calibration/crosscal.json
+  # VOC drift detector (plantbot/sensing/voc_drift.py). After warm-up it learns the mean and
+  # std dev of ln(R) for each sensor (humidity/temp compensated) over calib_s, then flags
+  # drift as z = (mu - x) / sigma plus a CUSUM. Command {"cmd":"drift_recalibrate"} relearns.
+  drift:
+    enabled: true
+    calibration: calibration/voc_drift.json   # saved fit; delete it (or recalibrate) after moving the rover
+    calib_s: 60                # seconds of healthy air to learn from
+    rate_hz: 1                 # detector sample rate (sampler smooths at sample_hz first)
+    min_sigma: 0.01            # floor on sigma (ln units, ~1% resistance) so a quiet calibration isn't hair-trigger
+    min_calib_samples: 10
+    min_rh_span: 3.0           # only fit humidity compensation if RH moved this much (%) during calibration
+    min_t_span: 2.0            # same for temperature (degC)
+    max_comp_slope: 0.05       # clamp on fitted d(lnR)/d(%RH or degC)
+    ewma_alpha: 0.3            # smoothing on z
+    z_watch: 2.0               # either sensor past 2 sigma -> watch
+    z_alarm: 3.0               # both sensors past 3 sigma for hold_s -> diseased
+    hold_s: 5.0
+    cusum_k: 0.5               # CUSUM slack (sigma); drifts smaller than this are ignored
+    cusum_h: 8.0               # CUSUM alarm level (sigma-samples); watch at half
+    cusum_max: 16.0            # cap, so the alarm clears ~16 s after the air is back to normal
+    slope_window_s: 60         # for the sigma/min trend shown on the dashboard
 
 vision:
   work_width: 640              # isolate runs on a downscaled copy

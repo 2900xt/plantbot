@@ -131,6 +131,12 @@ class Mission:
                 self.set_state("IDLE")
         elif cmd == "recalibrate":
             self.r.sampler.recalibrate()
+        elif cmd == "drift_recalibrate":  # learn a new healthy-air mean/sigma (clean air or a healthy plant)
+            if self.r.sampler.drift:
+                self.r.sampler.drift.recalibrate()
+        elif cmd == "drift_reset":  # clear the CUSUM after an alarm has been looked at
+            if self.r.sampler.drift:
+                self.r.sampler.drift.reset_cusum()
         elif cmd == "mock_spike":
             spike = getattr(self.r.env, "spike", None)
             if spike:
@@ -349,6 +355,7 @@ class Mission:
             "warm": s.warm, "warmup_remaining_s": round(s.warmup_remaining(), 1),
             "env": env, "ratios": s.ratios(), "baseline": base,
             "diff_calibrated": s.crosscal.calibrated, "plant_sensor": s.plant_sensor,
+            "drift": s.drift.last if s.drift else None,
             "range_cm": None if self.range_cm is None else round(self.range_cm, 1),
             "motors": [round(self.r.motors.left, 2), round(self.r.motors.right, 2)],
             "watchdog_trips": self.r.motors.watchdog_trips,

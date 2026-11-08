@@ -48,11 +48,16 @@ def load(path: str | Path | None = None, mock: bool = False, camera: str | None 
         cfg.camera.driver = cfg.mock.camera
         cfg.sensing.warmup_s = cfg.mock.warmup_s
         cfg.sensing.warmup_min_s = min(cfg.sensing.warmup_min_s, cfg.mock.warmup_s)
+        drift = cfg.sensing.get("drift")
+        if drift is not None and drift.get("calibration"):
+            # Mock air must never overwrite the real healthy-air fit.
+            drift.calibration = str(Path(drift.calibration).with_name(Path(drift.calibration).stem + "_mock.json"))
+            drift.calib_s = min(drift.get("calib_s", 60), 20)
     if camera:
         cfg.camera.driver = camera
     # Relative paths are relative to the repo root, so systemd/cwd don't matter.
     for section, key in (("store", "dir"), ("classifier", "model"), ("classifier", "labels"),
-                         ("mock", "camera_folder"), ("sensing.differential", "calibration"),
+                         ("mock", "camera_folder"), ("sensing.differential", "calibration"), ("sensing.drift", "calibration"),
                          ("tactile.turgor", "calibration")):
         sec = cfg
         for part in section.split("."):
