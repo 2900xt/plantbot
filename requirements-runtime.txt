@@ -1,0 +1,7 @@
+# Tested application dependencies; CUDA torch/torchvision are installed separately
+# from PyTorch's official cu128/cu130 index by setup.js.
+numpy==2.5.4
+scipy==1.18.1
+Pillow==13.0.0
+scikit-image==0.26.0
+transformers==4.57.6

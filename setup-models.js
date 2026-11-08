@@ -8,6 +8,7 @@ import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
+const checkOnly=process.argv.includes('--check');
 async function digest(file) {
   const hash=createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
@@ -25,6 +26,7 @@ try {
       if (existing.size!==asset.bytes || await digest(target)!==asset.sha256) throw new Error(`Existing model differs from release: ${asset.path}. Move it aside before installing.`);
       console.log(`Verified ${asset.path}`);continue;
     }
+    if(checkOnly) throw new Error(`Missing model: ${asset.path}. Run the normal launcher or npm run setup:models.`);
     await mkdir(path.dirname(target),{recursive:true});
     const temporary=target+'.download-'+randomUUID();
     try {
