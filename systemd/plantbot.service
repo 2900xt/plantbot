@@ -1,16 +1,16 @@
-# sudo cp systemd/plantbot.service /etc/systemd/system/ && sudo systemctl enable --now plantbot
-# Logs: journalctl -u plantbot -f
 [Unit]
 Description=plantbot rover
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/plantbot
-ExecStart=/home/pi/plantbot/.venv/bin/python -m plantbot
+# @USER@ and @DIR@ are filled in by deploy/setup_pi.sh
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/.venv/bin/python -m plantbot
 Restart=always
 RestartSec=2
+TimeoutStopSec=10
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

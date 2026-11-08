@@ -41,28 +41,25 @@ tools/calibrate.py       print clean-air sensor values to sanity-check warm-up a
 
 Any hardware that fails to start is logged, shown red on the dashboard, and swapped for its mock, so a dead BME680 doesn't stop driving.
 
-## Pi setup
+## Pi setup and deploy
 
-Raspberry Pi OS Bookworm 64-bit. On a Pi 5, `RPi.GPIO` doesn't work; we use gpiozero everywhere, so that's fine.
+Our Pi: `vittles.local` (Pi 4, Debian trixie, user `taha`, Logitech C270 on USB). Deploys go from a laptop over SSH with `deploy.sh`, which rsyncs your working copy to `~/plantbot` on the Pi. The Pi needs no GitHub access.
 
 ```bash
-sudo raspi-config nonint do_i2c 0          # enable I2C (camera is on by default on Bookworm)
-sudo apt update && sudo apt install -y git i2c-tools python3-venv python3-gpiozero python3-lgpio python3-picamera2
-git clone <this repo> ~/plantbot && cd ~/plantbot
-python3 -m venv --system-site-packages .venv    # system site-packages so it sees gpiozero/picamera2 from apt
-.venv/bin/pip install -r requirements-pi.txt
-i2cdetect -y 1                                  # expect 0x48 (ADS1115) and 0x76/0x77 (BME680)
+./deploy.sh --setup     # first time on a fresh Pi: apt packages, I2C on, venv, systemd unit
+./deploy.sh             # every time after: sync, pip install if requirements changed, restart, health check
+./deploy.sh --logs      # follow the service log
+PI=pi@plantbot.local ./deploy.sh   # a different Pi
 ```
 
-1. Edit `config.yaml`: `motors.driver` (servo / gpiozero / serial), pins, `camera.driver` (opencv for the USB webcam, picamera for CSI), `env.bme680_address`, `env.mq2.rl_kohm` (measure the module's load resistor).
-2. `.venv/bin/python tools/hw_check.py`: every check should PASS. Flip `invert_left/right` if a wheel spins backwards.
-3. `.venv/bin/python -m plantbot` and open `http://plantbot.local:8000/` (or the IP printed in the log) from a phone on the same hotspot.
-4. Install the service so it starts on boot and restarts on crash:
-   ```bash
-   sudo cp systemd/plantbot.service /etc/systemd/system/ && sudo systemctl enable --now plantbot
-   journalctl -u plantbot -f
-   ```
-   Deploy: `git pull && sudo systemctl restart plantbot`. Stop the service before running `hw_check.py` or `capture_dataset.py`, because the service holds the camera and GPIO.
+`deploy.sh` exits non-zero and prints the last log lines if the dashboard isn't answering on :8000 within 20 s. It deploys uncommitted changes too, so still commit and push so teammates have them. `scans/` and `calibration/crosscal.json` on the Pi are never overwritten.
+
+After a deploy, open `http://vittles.local:8000/` from a phone or laptop on the same hotspot.
+
+On the Pi (`ssh taha@vittles.local`, `cd ~/plantbot`):
+1. `i2cdetect -y 1`: expect 0x48 (ADS1115) and 0x76/0x77 (BME680).
+2. Edit `config.yaml` **locally** and redeploy: `motors.driver`, pins, `camera.driver`, `env.bme680_address`, `env.mq2.rl_kohm` (measure the module's load resistor).
+3. `sudo systemctl stop plantbot && .venv/bin/python tools/hw_check.py`: every check should PASS. Flip `invert_left/right` if a wheel spins backwards. Stop the service first, because it holds the camera and GPIO; `sudo systemctl start plantbot` after.
 
 ## Plugging in the model (ML is owned by a teammate)
 
