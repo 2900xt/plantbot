@@ -12,3 +12,4 @@ calibration/*_mock*
 .env
 deploy/vultr/user-data.yaml
 Pictures_Test/
+.leaflink_sent.json
