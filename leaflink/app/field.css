@@ -64,3 +64,12 @@
 .detail-progress{max-width:520px;margin:4px 0 14px}
 @media(max-width:760px){.load-label{display:none}}
 
+/* Simulated rover on the field map: drives north at 1 ft/s from the grid origin. */
+.rover-sim{pointer-events:none}
+.rover-trail{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-dasharray:1 9;opacity:.7}
+.rover-start{fill:var(--surface);stroke:var(--ink);stroke-width:2}
+.rover-body{fill:var(--peach);stroke:var(--text);stroke-width:2.2;stroke-linejoin:round}
+.rover-wheel{fill:var(--text)}
+.rover-nose{fill:none;stroke:var(--text);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.rover-eye{fill:var(--blue);stroke:var(--text);stroke-width:1.6}
+.rover-label{font-size:14px;fill:var(--text);paint-order:stroke;stroke:var(--paper);stroke-width:5px;stroke-linejoin:round}
