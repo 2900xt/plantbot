@@ -36,7 +36,11 @@ async def run(mission, cfg) -> None:
     codes = {name: evdev.ecodes.ecodes[getattr(b, name)]
              for name in ("left_fwd", "left_back", "right_fwd", "right_back")}
     names = {code: f"{getattr(b, name)}({name})" for name, code in codes.items()}
-    log.info("mouse drive: %s", ", ".join(names.values()))
+    # Wheel press toggles the photo recorder (plantbot/recorder.py), if both are configured.
+    recorder = getattr(mission.r, "recorder", None)
+    record_code = evdev.ecodes.ecodes[b.record] if b.get("record") and recorder else None
+    log.info("mouse drive: %s%s", ", ".join(names.values()),
+             f", {b.record}(record)" if record_code is not None else "")
     while True:
         dev = _find_mouse(evdev, cfg.get("device"))
         if dev is None:
@@ -49,6 +53,10 @@ async def run(mission, cfg) -> None:
             if cfg.get("grab", True):
                 dev.grab()  # keep clicks away from any desktop on the Pi
             async for ev in dev.async_read_loop():
+                if ev.type == evdev.ecodes.EV_KEY and ev.code == record_code:
+                    if ev.value == 1:
+                        log.info("mouse %s -> recorder %s", b.record, recorder.toggle(ev.timestamp()))
+                    continue
                 if ev.type != evdev.ecodes.EV_KEY or ev.code not in codes.values():
                     continue
                 if ev.value == 1:

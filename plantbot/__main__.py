@@ -54,8 +54,14 @@ def build_robot(cfg):
     devices["bumper"] = "armed" if guard.armed and devices["tactile"] in ("ok", "mock") else "off"
     zel = ZelosPublisher(cfg.get("zelos"), tactile=tac, guard=guard)
     devices["zelos"] = "ok" if zel.enabled else (zel.error or "disabled")
-    return Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices, ll, sinks,
-                 tactile=tac, arm=arm, guard=guard, zelos=zel)
+    robot = Robot(cfg, m, cam, e, sampler, rng, f, clf, Store(cfg.store.dir), devices, ll, sinks,
+                  tactile=tac, arm=arm, guard=guard, zelos=zel)
+    from plantbot.recorder import Recorder
+
+    # Mouse-wheel photo sessions (1/s) into Pictures_Test/ for the laptop -> LeafLink pipeline.
+    robot.recorder = Recorder(cam, cfg.get("recorder"), devices["camera"])
+    devices["recorder"] = "ready" if robot.recorder.enabled and devices["camera"] != "offline" else "off"
+    return robot
 
 
 def _ips() -> list[str]:

@@ -37,9 +37,14 @@ def make_app(mission) -> FastAPI:
             from plantbot.hal import mouse_drive
 
             tasks.append(asyncio.create_task(mouse_drive.run(mission, md)))
+        rec = getattr(robot, "recorder", None)
+        rec_task = asyncio.create_task(rec.run()) if rec and rec.enabled else None
         yield
         for t in tasks:
             t.cancel()
+        if rec_task:  # let it write session.json for a recording still in progress
+            rec_task.cancel()
+            await asyncio.gather(rec_task, return_exceptions=True)
         robot.motors.stop()
         if robot.zelos:
             robot.zelos.close()

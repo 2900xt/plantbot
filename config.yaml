@@ -81,6 +81,14 @@ mouse_drive:                   # tank drive from a USB mouse plugged into the Pi
     left_fwd: BTN_LEFT         # mb2 (left click)
     right_back: BTN_SIDE       # mb3 (rear thumb button, "back")
     left_back: BTN_EXTRA       # mb4 (front thumb button, "forward"); swap these two if they feel reversed
+    record: BTN_MIDDLE         # wheel press: start/stop a photo session (see recorder:); null = off
+
+recorder:                      # wheel-press photo sessions for the laptop -> LeafLink pipeline
+  enabled: true
+  interval_s: 1.0              # one photo per second while recording
+  lockout_s: 0.3               # ignore a 2nd wheel press this soon after start/stop (switch bounce)
+  max_frame_age_s: 1.0         # skip (don't fake) photos when the camera stops delivering frames
+  out_dir: Pictures_Test       # <repo>/Pictures_Test/<start time>/0001.jpg + session.json on stop
 
 ranger:
   driver: none                 # hcsr04 | none | mock (not built on the MVP; auto mode needs it)
