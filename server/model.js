@@ -1,6 +1,7 @@
 import {runPython} from './python.js';
 import {gpuPredict} from './gpu.js';
 import {expertPredict} from './experts.js';
+import {segmentedPredict} from './segmented.js';
 import {applyBinaryTriage, probabilityVector} from './binary.js';
 export function validateVerdict(value) {
   if (!value || !['diseased', 'healthy'].includes(value.verdict) || typeof value.confidence !== 'number' || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1 || typeof value.model_version !== 'string' || !value.model_version.trim() || value.model_version.length > 200) throw new Error('Invalid model response');
@@ -28,7 +29,8 @@ export function validateExpertVerdict(value) {
   }
   return result;
 }
-export async function infer(c, bytes, id) {
+export async function infer(c, bytes, id, context) {
+  if (c.modelMode === 'segmented') return validateVerdict(await segmentedPredict(c,bytes,context));
   if (c.modelMode === 'experts') return validateExpertVerdict(await expertPredict(c,bytes));
   if (c.modelMode === 'gpu') return applyBinaryTriage(c,validateVerdict(await gpuPredict(c,bytes)));
   if (c.modelMode === 'demo') return { verdict: c.demoVerdict, confidence: 0.99, model_version: 'demo-no-ml', simulated: true };

@@ -1,0 +1,73 @@
+{
+  "epoch": 1,
+  "image_size": 384,
+  "classes": [
+    "apple_apple_scab",
+    "apple_black_rot",
+    "apple_cedar_apple_rust",
+    "apple_healthy",
+    "blueberry_healthy",
+    "cherry_including_sour_healthy",
+    "cherry_including_sour_powdery_mildew",
+    "corn_maize_cercospora_leaf_spot_gray_leaf_spot",
+    "corn_maize_common_rust",
+    "corn_maize_healthy",
+    "corn_maize_northern_leaf_blight",
+    "grape_black_rot",
+    "grape_esca_black_measles",
+    "grape_healthy",
+    "grape_leaf_blight_isariopsis_leaf_spot",
+    "orange_haunglongbing_citrus_greening",
+    "peach_bacterial_spot",
+    "peach_healthy",
+    "pepper_bell_bacterial_spot",
+    "pepper_bell_healthy",
+    "potato_early_blight",
+    "potato_healthy",
+    "potato_late_blight",
+    "raspberry_healthy",
+    "soybean_healthy",
+    "squash_powdery_mildew",
+    "strawberry_healthy",
+    "strawberry_leaf_scorch",
+    "tomato_bacterial_spot",
+    "tomato_early_blight",
+    "tomato_healthy",
+    "tomato_late_blight",
+    "tomato_leaf_mold",
+    "tomato_septoria_leaf_spot",
+    "tomato_spider_mites_two_spotted_spider_mite",
+    "tomato_target_spot",
+    "tomato_tomato_mosaic_virus",
+    "tomato_tomato_yellow_leaf_curl_virus"
+  ],
+  "mean": [
+    0.5,
+    0.5,
+    0.5
+  ],
+  "std": [
+    0.5,
+    0.5,
+    0.5
+  ],
+  "inference_precision": "torch.float16",
+  "memory_format": "channels_last",
+  "model_sha256": "aead833ccb5d4737670e3254a47ab2f95b5a37d09ebf7f3acf78aa3b3f318c1e",
+  "model_family": "leaf-cnn-checkpoint1-sam2",
+  "checkpoint_epoch": 1,
+  "segmentation_files": {
+    "model.safetensors": "48c14467e5cf9e51870511feb72c89688e82dd74523142c0538b663e193ac2a7",
+    "config.json": "860aff9751b139d83a4ad7df1e5535416fded533e0ead02625edbefcb9953cce",
+    "preprocessor_config.json": "6ebf229ee259368ce4a8d4f2fe893a72b053023710853e257253939e601f583d",
+    "processor_config.json": "f8a68e865cfad115c1c2763f3d93eca7b1c622da06da2a9273eb437fb2389b6d"
+  },
+  "segmentation_model": "facebook/sam2.1-hiera-tiny",
+  "segmentation_background_rgb": [
+    128,
+    128,
+    128
+  ],
+  "segmentation_invalid_mask_policy": "unchanged_crop",
+  "training_protocol": "Original CNN last block and head; checkpoint1 with original-training replay"
+}

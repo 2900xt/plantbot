@@ -6,7 +6,32 @@ import path from 'node:path';
 import {parseEnv} from 'node:util';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {gpuPolicy,updateRuntimeEnv,run,setRuntimeFile} from '../scripts/setup-lib.mjs';
+import {gpuPolicy,updateRuntimeEnv,run,setRuntimeFile,migrateDefaultClassifierEnv} from '../scripts/setup-lib.mjs';
+
+test('only the old packaged GPU default migrates; user choices and credentials survive',()=>{
+  const root=path.resolve('/leaflink');
+  const source='API_TOKEN=keep-secret\nPORT=9000\nMODEL_MODE=gpu\nGPU_MODEL_DIR=./models/LeafCNN-Epoch8-GPU\nBINARY_DISEASE_THRESHOLD=.9\n';
+  const updated=migrateDefaultClassifierEnv(source,root),parsed=parseEnv(updated);
+  assert.equal(parsed.MODEL_MODE,'segmented');assert.equal(parsed.API_TOKEN,'keep-secret');assert.equal(parsed.PORT,'9000');assert.equal(parsed.BINARY_DISEASE_THRESHOLD,'.9');
+  assert.equal(parsed.SEGMENTED_MODEL_DIR,'./models/LeafCNN-Field-Checkpoint1');assert.equal(migrateDefaultClassifierEnv(updated,root),updated);
+  for(const mode of ['http','local','experts','disabled','segmented']){
+    const custom=source.replace('MODEL_MODE=gpu','MODEL_MODE='+mode);assert.equal(migrateDefaultClassifierEnv(custom,root),custom);
+  }
+  const external=source.replace('./models/LeafCNN-Epoch8-GPU','./custom/checkpoint');assert.equal(migrateDefaultClassifierEnv(external,root),external);
+  const customDevice=source+'SEGMENTED_DEVICE=cpu\n';assert.equal(parseEnv(migrateDefaultClassifierEnv(customDevice,root)).SEGMENTED_DEVICE,'cpu');
+});
+
+test('fresh launcher selects segmented mode and leaves custom model configuration intact',async t=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'leaflink-segmented-setup-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const script=fileURLToPath(new URL('../server/configure-field.js',import.meta.url));
+  await run(process.execPath,[script],{cwd:directory,capture:true});
+  const file=path.join(directory,'.env.field'),initial=await readFile(file,'utf8'),config=parseEnv(initial);
+  assert.equal(config.MODEL_MODE,'segmented');assert.equal(config.SEGMENTED_DEVICE,'auto');
+  assert.equal(config.SEGMENTATION_MODEL_DIR,'./models/SAM2.1-Hiera-Tiny');
+  const custom=initial.replace('MODEL_MODE=segmented','MODEL_MODE=http')+'MODEL_URL=https://example.invalid/model\n';
+  await writeFile(file,custom);await run(process.execPath,[script],{cwd:directory,capture:true});
+  assert.equal(await readFile(file,'utf8'),custom);
+});
 
 test('selects a matching supported CUDA wheel and rejects old drivers/architectures',()=>{
   assert.equal(gpuPolicy('Tesla T4, 590.48.01, 7.5').wheel,'cu130');

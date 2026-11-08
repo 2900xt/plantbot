@@ -32,7 +32,7 @@ Automatic setup targets **x64 Windows10/11 and modern glibc x64 Linux**, with a 
 
 A GPU's presence alone cannot guarantee compatibility. ARM/Jetson, macOS, pre-Turing cards and obsolete/missing drivers are outside this installer’s supported matrix. CUDA12.8 is a compatibility path checked at launch; the release artifact’s original GPU audit used CUDA13.0. Multi-GPU systems use the default CUDA device; custom CUDA visibility/device overrides need their own verification.
 
-The original epoch-8 classifier remains the normal default. **Start-Crop-Experts.cmd** / `npm run start:experts` selects the separately labeled experimental experts; installation convenience does not improve or certify model accuracy.
+The normal default is replay-protected CNN checkpoint 1 with SAM2.1-Hiera-Tiny leaf segmentation; SegFormer-B2 still filters ground before leaf proposals. The original epoch-8 classifier remains available through MODEL_MODE=gpu. **Start-Crop-Experts.cmd** / `npm run start:experts` selects the separately labeled experimental experts; installation convenience does not improve or certify model accuracy.
 
 ## Commands
 
@@ -48,7 +48,7 @@ npm test                  # setup/config regression tests
 
 Setup-only launchers: `powershell -File start-field.ps1 -SetupOnly` on Windows, or `bash start-leaflink.sh --setup-only` on Linux. If setup stops, fix the named issue and run the same launcher; interrupted downloads are not installed. Existing model files with a wrong checksum are reported, not silently overwritten. Move an intentionally different model aside before reinstalling the published artifact.
 
-Runtime/cache files live in `.leaflink/` and `.venv-field/`; weights are downloaded into `models/` from the manifest in `model-assets.json`. None is committed. Tokens/storage/event rules remain in `.env.field` (or `.env.experts`); setup updates only the managed Python paths in existing configuration. Python pins are in `requirements-runtime.txt`; model files retain their published hashes. Full runtime setup verification is recorded in `.leaflink/setup-state.json` after checks pass.
+Runtime/cache files live in `.leaflink/` and `.venv-field/`; weights are downloaded into `models/` from the manifest in `model-assets.json`. None is committed. Tokens/storage/event rules remain in `.env.field` (or `.env.experts`); setup preserves tokens, storage and custom model selections while updating managed Python paths. Only the old packaged epoch-8 GPU default is automatically migrated to checkpoint 1 with SAM2. Python pins are in `requirements-runtime.txt`; model files retain their published hashes. Full runtime setup verification is recorded in `.leaflink/setup-state.json` after checks pass.
 
 For a fresh clone you do **not** need to manually run `npm ci`, `setup-models.js`, pip or the frontend build; the normal launcher does those steps. Advanced legacy/http/demo server configurations remain available separately and are not validated by the normal GPU installer.
 
@@ -60,6 +60,6 @@ Official runtime references: [PyTorch2.11 matching CUDA wheels](https://pytorch.
 
 ## Fresh-install verification
 
-A clean GitHub clone in a folder with spaces, without weights, node_modules or a Python environment, passed on a Kaggle Tesla T4: portable Node and managed Python installation, all three weight checks, CUDA kernels, both classifier runtime probes, frontend/server health and a real HTTP image upload producing40 classified candidates. First setup took66.7s on Kaggle's fast network; cached setup14.2s. These are observations, not promised download times. Five setup/config tests and the frontend build pass locally. [Exact environment and verification scope](docs/setup-validation.json).
+Before checkpoint 1/SAM2 was integrated, a clean GitHub clone in a folder with spaces, without weights, node_modules or a Python environment, passed on a Kaggle Tesla T4: portable Node and managed Python installation, all three weight checks, CUDA kernels, both classifier runtime probes, frontend/server health and a real HTTP image upload producing40 classified candidates. First setup took66.7s on Kaggle's fast network; cached setup14.2s. These are observations, not promised download times. Five setup/config tests and the frontend build pass locally. [Exact environment and verification scope](docs/setup-validation.json).
 
 Windows launcher syntax/config handling was tested locally; a Windows NVIDIA GPU machine was not available for a full installation test. The clean GPU run used CUDA13.0; the driver570 compatibility path is verified on the user's device at launch. This is why the launcher checks real execution and reports failures instead of promising every NVIDIA device will work.

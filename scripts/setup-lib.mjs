@@ -6,6 +6,18 @@ import {createWriteStream} from 'node:fs';
 import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import path from 'node:path';
+import {parseEnv} from 'node:util';
+
+export function migrateDefaultClassifierEnv(text,root){
+  const current=parseEnv(text);
+  if(current.MODEL_MODE!=='gpu')return text;
+  const canonical=value=>{const resolved=path.resolve(root,value.replaceAll('\\','/'));return process.platform==='win32'?resolved.toLowerCase():resolved;};
+  if(current.GPU_MODEL_DIR && canonical(current.GPU_MODEL_DIR)!==canonical('./models/LeafCNN-Epoch8-GPU'))return text;
+  let updated=text.replace(/^[ \t]*MODEL_MODE[ \t]*=.*$/gm,'MODEL_MODE=segmented');
+  const defaults={SEGMENTED_MODEL_DIR:'./models/LeafCNN-Field-Checkpoint1',SEGMENTATION_MODEL_DIR:'./models/SAM2.1-Hiera-Tiny',SEGMENTED_DEVICE:'auto',SEGMENTATION_CPU_THREADS:'4'};
+  for(const [key,value] of Object.entries(defaults))if(current[key]===undefined)updated=updated.trimEnd()+'\n'+key+'='+value+'\n';
+  return updated;
+}
 
 export function gpuPolicy(text){
   const rows=text.trim().split(/\r?\n/).filter(Boolean).map(line=>{
