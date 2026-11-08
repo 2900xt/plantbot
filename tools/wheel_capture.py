@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import select
+import signal
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -103,6 +106,16 @@ class UsbCamera:
             self.cap = None
 
 
+def write_marker(folder: Path, started: str, photos: int, skipped: int, reason: str) -> None:
+    """session.json = "this session is finished". The laptop waits for it (and for exactly
+    `photos` jpgs) before it builds the session report."""
+    body = {"started": started, "stopped": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "photos": photos, "skipped": skipped, "stopped_by": reason}
+    tmp = folder / ".session.json.tmp"
+    tmp.write_text(json.dumps(body, indent=1))
+    os.replace(tmp, folder / "session.json")
+
+
 def save_jpeg(folder: Path, name: str, frame) -> None:
     ok, buf = cv2.imencode(".jpg", frame)
     if not ok:
@@ -132,11 +145,21 @@ def main():
         print("WARNING: camera not found yet; will keep trying (check the USB cable)")
     print("Press the mouse wheel to start/stop taking photos. Ctrl+C to quit.")
 
-    session, count, skipped, next_shot, cam_lost = None, 0, 0, 0.0, False
+    session, count, skipped, next_shot, cam_lost, started = None, 0, 0, 0.0, False, ""
 
-    def stop_msg():
+    def finish(reason):
+        """End the session: print it and write session.json so the laptop knows it's complete."""
+        nonlocal session
         extra = f", {skipped} skipped (camera not working)" if skipped else ""
-        return f"STOP   {count} photos in {session}{extra}"
+        print(f"STOP   {count} photos in {session}{extra}")
+        write_marker(session, started, count, skipped, reason)
+        session = None
+
+    # systemd stops the service with SIGTERM: finish the session cleanly then too.
+    def on_term(*_):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, on_term)
 
     try:
         while True:
@@ -146,10 +169,10 @@ def main():
                     session = Path(a.out) / time.strftime("%Y-%m-%d_%H-%M-%S")
                     session.mkdir(parents=True, exist_ok=True)
                     count, skipped, next_shot = 0, 0, time.monotonic()
+                    started = datetime.now().astimezone().isoformat(timespec="seconds")
                     print(f"START  saving to {session}")
                 else:
-                    print(stop_msg())
-                    session = None
+                    finish("wheel")
             if session and time.monotonic() >= next_shot:
                 frame = cam.fresh_frame()
                 if frame is None:
@@ -167,11 +190,12 @@ def main():
                 next_shot = max(next_shot + a.interval, time.monotonic())  # no burst if a grab ran slow
     except KeyboardInterrupt:
         if session:
-            print("\n" + stop_msg())
+            print()
+            finish("quit")
     except OSError as e:  # mouse unplugged
         print(f"\nMouse disconnected ({e}).")
         if session:
-            print(stop_msg())
+            finish("mouse unplugged")
     finally:
         cam.close()
 

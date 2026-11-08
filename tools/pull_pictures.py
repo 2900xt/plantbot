@@ -17,11 +17,13 @@ Reliability:
   * Failed or partial copies are retried on the next pass; nothing is deleted on the Pi.
 
 Layout: <dest>/<session start time>/0001.jpg, 0002.jpg, ...  (same as on the Pi)
+        plus session.json once that recording has stopped (send_to_leaflink.py uses it).
 Expect new photos on the laptop within ~3-6 s of being taken.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import socket
 import subprocess
@@ -53,7 +55,9 @@ def ssh_opts(pi: str) -> list[str]:
 
 def remote_listing(pi: str, remote_dir: str) -> dict[str, int]:
     """{'<session>/<file>.jpg': size} for every finished photo on the Pi."""
-    cmd = f'cd ~/{remote_dir} 2>/dev/null && find . -name "*.jpg" -printf "%P\\t%s\\n" || true'
+    # photos, plus each finished session's session.json (written by wheel_capture on stop)
+    cmd = (f'cd ~/{remote_dir} 2>/dev/null && find . \\( -name "*.jpg" -o -name session.json \\) '
+           f'-printf "%P\\t%s\\n" || true')
     out = subprocess.run(["ssh", *ssh_opts(pi), pi, cmd], capture_output=True, text=True, timeout=30)
     if out.returncode != 0:
         raise ConnectionError(out.stderr.strip() or f"ssh exited {out.returncode}")
@@ -71,10 +75,13 @@ def is_complete_jpeg(path: Path, size: int) -> bool:
     try:
         if not path.exists() or path.stat().st_size != size or size < 4:
             return False
+        if path.name.startswith("session.json"):  # session marker (also its .part)
+            json.loads(path.read_text(encoding="utf-8"))
+            return True
         with open(path, "rb") as f:
             f.seek(-2, os.SEEK_END)
             return f.read(2) == b"\xff\xd9"
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
