@@ -37,6 +37,8 @@ def make_app(mission) -> FastAPI:
             from plantbot.hal import mouse_drive
 
             tasks.append(asyncio.create_task(mouse_drive.run(mission, md)))
+        elif md:
+            robot.devices["mouse"] = "disabled"  # off in --mock: it would grab the laptop's mouse
         rec = getattr(robot, "recorder", None)
         rec_task = asyncio.create_task(rec.run()) if rec and rec.enabled else None
         yield
