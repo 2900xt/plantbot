@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>plantbot · Plant Doctor</title>
+<!-- Served at /gemini (web/gemini_routes.py). Self-contained: also works inside an <iframe src="/gemini?embed=1">. -->
+<style>
+  :root {
+    --bg: #0f1412; --panel: #18201c; --line: #2a352f; --text: #e3ece6; --dim: #8a9a90;
+    --green: #3fbf6f; --amber: #e0a43a; --red: #e0483a; --blue: #4a9de0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  header a { color: var(--dim); }
+  body.embed header { display: none; }
+  .badge { padding: 3px 9px; border-radius: 99px; background: var(--line); font-weight: 600; font-size: 12px; }
+  .badge.ESTOP, #conn.off { background: var(--red); }
+  #estop { margin-left: auto; background: var(--red); color: #fff; border: 0; border-radius: 10px; font-weight: 800; font-size: 16px; padding: 8px 18px; }
+  #estop.reset { background: var(--amber); color: #000; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px; max-width: 1100px; margin: 0 auto; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding: 8px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 10px; display: flex; gap: 8px; align-items: center; }
+  .panel h2 .src { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .btn { background: var(--line); color: var(--text); border: 1px solid #3a4a40; border-radius: 8px; padding: 8px 12px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  .btn.primary { background: var(--green); color: #052; border-color: var(--green); }
+  .btn.rec { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .muted { color: var(--dim); }
+  .doc { display: grid; grid-template-columns: 120px 1fr; gap: 12px; }
+  .doc img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; background: #000; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-weight: 700; text-transform: uppercase; font-size: 12px; color: #000; }
+  .h-healthy { background: var(--green); } .h-stressed { background: var(--amber); } .h-diseased { background: var(--red); color: #fff; }
+  .u-high { color: var(--red); } .u-medium { color: var(--amber); } .u-low, .u-none { color: var(--dim); }
+  .species { font-size: 20px; font-weight: 700; margin: 4px 0 2px; text-transform: capitalize; }
+  .issue { font-weight: 600; }
+  .farmer { margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--green); background: #111815; border-radius: 0 8px 8px 0; font-size: 15px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--blue); }
+  ul { margin: 4px 0 10px; padding-left: 18px; }
+  h3 { font-size: 12px; color: var(--dim); margin: 10px 0 2px; font-weight: 600; }
+  .cmp { font-size: 12px; color: var(--dim); }
+  form { display: flex; gap: 6px; }
+  input[type=text] { flex: 1; min-width: 0; background: #111815; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 15px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chips button { background: #111815; color: var(--dim); border: 1px solid var(--line); border-radius: 99px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  ol.plan { padding-left: 22px; margin: 8px 0; }
+  ol.plan li { padding: 2px 0; }
+  ol.plan li.now { color: var(--blue); font-weight: 700; }
+  ol.plan li.done { color: var(--dim); }
+  .say { background: #13241b; border: 1px solid #24503a; border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 15px; }
+  .err { color: #ffb0a8; font-size: 12px; }
+  #log { font: 12px ui-monospace, monospace; color: var(--dim); white-space: pre-wrap; max-height: 140px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 Plant Doctor <span class="muted" style="font-weight:400">· powered by Gemini</span></h1>
+  <span class="badge" id="state">…</span>
+  <span class="badge" id="conn">connecting</span>
+  <a href="/">dashboard</a>
+  <button id="estop">E-STOP</button>
+</header>
+<main>
+  <section class="panel" id="doctor">
+    <h2>Latest scan <span class="src" id="dsrc"></span></h2>
+    <div id="dbody" class="muted">No scans yet. Press Scan on the dashboard, or type "scan" below.</div>
+    <div style="margin-top:10px"><button class="btn" id="again" disabled>Ask Gemini again</button></div>
+  </section>
+  <section class="panel">
+    <h2>Tell the rover <span class="src" id="planner"></span></h2>
+    <form id="cmdform">
+      <input type="text" id="cmd" placeholder="scan the plant on the left then come back" autocomplete="off">
+      <button class="btn" type="button" id="mic" title="Hold to talk">🎤</button>
+      <button class="btn primary" type="submit">Go</button>
+    </form>
+    <div class="chips">
+      <button>scan the plant on the left then come back</button>
+      <button>how is the basil doing?</button>
+      <button>drive forward 20 cm and scan</button>
+      <button>start patrol</button>
+      <button>stop</button>
+    </div>
+    <div id="heard" class="muted"></div>
+    <div id="says"></div>
+    <ol class="plan" id="plan"></ol>
+    <div id="perr" class="err"></div>
+    <div class="row" style="display:flex;gap:6px;margin:6px 0"><button class="btn" id="cancel">Cancel plan</button></div>
+    <div id="log"></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
+let current = null, ws = null, rstate = '';
+
+// ---------- Plant Doctor ----------
+function renderDoctor(scan, d, status) {
+  current = scan;
+  $('again').disabled = !scan || !(status && status.available);
+  if (!scan) return;
+  const img = scan.images ? scan.images.crop : `/scans/${scan.id}/crop.jpg`;
+  const cnn = `On-board CNN: <b>${esc(scan.label)}</b> · health score ${Math.round(scan.health ?? 0)}/100 (${esc(scan.status)})`;
+  if (!d) {
+    const why = status && !status.available ? `Gemini is off (${esc(status.error || 'no GEMINI_API_KEY')}). Showing the on-board result only.`
+                                            : 'Asking Gemini…';
+    $('dbody').innerHTML = `<div class="doc"><img src="${img}" alt=""><div><div class="cmp">${cnn}</div><p>${why}</p></div></div>`;
+    $('dsrc').textContent = '';
+    return;
+  }
+  const li = a => a.map(x => `<li>${esc(x)}</li>`).join('');
+  $('dbody').innerHTML = `
+    <div class="doc"><img src="${img}" alt="plant crop">
+      <div>
+        <span class="pill h-${esc(d.health)}">${esc(d.health)}</span>
+        <span class="u-${esc(d.urgency)}" style="margin-left:6px;font-weight:600">urgency: ${esc(d.urgency)}</span>
+        <div class="species">${esc(d.species_guess)}</div>
+        <div class="issue">${esc(d.likely_issue)}</div>
+        <div class="bar" title="confidence"><i style="width:${Math.round(100 * d.confidence)}%"></i></div>
+        <div class="cmp">confidence ${Math.round(100 * d.confidence)}%</div>
+      </div>
+    </div>
+    <div class="farmer">${esc(d.explain_for_farmer)}</div>
+    <h3>What to do</h3><ul>${li(d.care_actions || [])}</ul>
+    <h3>Evidence (photo + smell)</h3><ul>${li(d.evidence || [])}</ul>
+    <div class="cmp">${cnn}</div>`;
+  $('dsrc').textContent = d.source === 'gemini' ? `${d.model} · ${d.latency_ms} ms` : d.source === 'mock' ? 'offline demo diagnosis' : d.source;
+}
+
+async function loadLatest() {
+  try {
+    const r = await (await fetch('/api/gemini/doctor/latest')).json();
+    renderDoctor(r.scan, r.diagnosis, r.doctor);
+  } catch (e) { $('dbody').textContent = 'Plant Doctor API not reachable.'; }
+}
+
+$('again').onclick = async () => {
+  if (!current) return;
+  $('again').disabled = true;
+  renderDoctor(current, null, {available: true});
+  const r = await (await fetch(`/api/gemini/doctor/${encodeURIComponent(current.id)}?refresh=true`)).json();
+  renderDoctor(r.scan, r.diagnosis, r.doctor);
+};
+
+// ---------- commands ----------
+function renderPlan(p) {
+  $('heard').textContent = p.text ? `heard: “${p.text}” (${p.source})` : '';
+  $('says').innerHTML = (p.actions || []).filter(a => a.action === 'say').map(a => `<div class="say">🤖 ${esc(a.text)}</div>`).join('');
+  $('plan').innerHTML = (p.actions || []).filter(a => a.action !== 'say').map(a => `<li>${esc(describe(a))}</li>`).join('');
+  $('perr').textContent = (p.errors || []).join(' · ');
+}
+function describe(a) {
+  switch (a.action) {
+    case 'drive': return `drive ${a.direction} ${a.distance_cm} cm (${a.seconds}s @ ${a.speed})`;
+    case 'turn': return `turn ${a.direction} ${a.degrees}° (${a.seconds}s)`;
+    case 'wait': return `wait ${a.seconds}s`;
+    case 'return_to_start': return `return to start (${a.seconds}s of moves)`;
+    default: return a.action.replace(/_/g, ' ');
+  }
+}
+async function send(body) {
+  $('perr').textContent = '';
+  $('heard').textContent = body.text ? `thinking about “${body.text}”…` : 'listening…';
+  try {
+    const res = await fetch('/api/gemini/command', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const p = await res.json();
+    if (!res.ok) throw new Error(p.detail || res.status);
+    renderPlan(p);
+  } catch (e) { $('heard').textContent = ''; $('perr').textContent = `command failed: ${e.message}`; }
+}
+$('cmdform').onsubmit = e => { e.preventDefault(); const t = $('cmd').value.trim(); if (t) send({text: t}); };
+document.querySelectorAll('.chips button').forEach(b => b.onclick = () => { $('cmd').value = b.textContent; send({text: b.textContent}); });
+$('cancel').onclick = () => fetch('/api/gemini/command/cancel', {method: 'POST'});
+
+async function pollCommand() {
+  try {
+    const s = await (await fetch('/api/gemini/command')).json();
+    $('planner').textContent = s.planner;
+    const items = [...$('plan').children];
+    let i = 0;
+    (s.plan || []).forEach(a => { if (a.action === 'say') return; const li = items[i++]; if (!li) return;
+      const idx = s.plan.indexOf(a);
+      li.className = s.running && s.step === idx ? 'now' : (s.running && s.step > idx) || (!s.running && s.log.length) ? 'done' : ''; });
+    $('log').textContent = (s.log || []).join('\n');
+  } catch (e) {}
+}
+setInterval(pollCommand, 500);
+
+// ---------- voice: record, convert to 16 kHz mono WAV (a format Gemini documents), send ----------
+const mic = $('mic');
+if (!(window.isSecureContext && navigator.mediaDevices && window.MediaRecorder)) {
+  mic.disabled = true; mic.title = 'Mic needs https or localhost (open the dashboard on the laptop running the rover).';
+}
+let rec = null, chunks = [];
+async function startRec() {
+  if (rec || mic.disabled) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    rec = new MediaRecorder(stream); chunks = [];
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, {type: rec.mimeType}); rec = null; mic.classList.remove('rec');
+      const wav = await toWav(await blob.arrayBuffer());
+      send({audio_b64: b64(wav), mime: 'audio/wav'});
+    };
+    rec.start(); mic.classList.add('rec');
+    setTimeout(() => rec && rec.state === 'recording' && rec.stop(), 8000);
+  } catch (e) { $('perr').textContent = `mic: ${e.message}`; rec = null; }
+}
+function stopRec() { if (rec && rec.state === 'recording') rec.stop(); }
+mic.addEventListener('pointerdown', startRec);
+['pointerup', 'pointerleave'].forEach(ev => mic.addEventListener(ev, stopRec));
+
+async function toWav(buf) {
+  const ctx = new AudioContext(); const src = await ctx.decodeAudioData(buf); ctx.close();
+  const rate = 16000, off = new OfflineAudioContext(1, Math.ceil(src.duration * rate), rate);
+  const node = off.createBufferSource(); node.buffer = src; node.connect(off.destination); node.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+  const out = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const w = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); out.setUint32(4, 36 + pcm.length * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+  out.setUint32(24, rate, true); out.setUint32(28, rate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+  w(36, 'data'); out.setUint32(40, pcm.length * 2, true);
+  pcm.forEach((v, i) => out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
+  return out.buffer;
+}
+function b64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); }
+
+// ---------- websocket: live scans/diagnoses, state badge, E-stop ----------
+function connect() {
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+  ws.onopen = () => { $('conn').textContent = 'live'; $('conn').className = 'badge'; };
+  ws.onclose = () => { $('conn').textContent = 'offline'; $('conn').className = 'badge off'; setTimeout(connect, 1500); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.telemetry) {
+      rstate = m.telemetry.state; $('state').textContent = rstate; $('state').className = 'badge ' + rstate;
+      $('estop').textContent = rstate === 'ESTOP' ? 'RESET' : 'E-STOP'; $('estop').classList.toggle('reset', rstate === 'ESTOP');
+    }
+    if (m.scan) { renderDoctor(m.scan, null, {available: true}); loadLatest(); }  // dedups with the auto hook server-side
+    if (m.diagnosis && (!current || m.diagnosis.scan_id === current.id)) loadLatest();
+  };
+}
+$('estop').onclick = () => {
+  if (rstate !== 'ESTOP') fetch('/api/gemini/command/cancel', {method: 'POST'});
+  ws && ws.readyState === 1 && ws.send(JSON.stringify({cmd: rstate === 'ESTOP' ? 'reset' : 'estop'}));
+};
+connect(); loadLatest(); pollCommand();
+</script>
+</body>
+</html>

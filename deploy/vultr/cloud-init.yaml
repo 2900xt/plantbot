@@ -1,0 +1,54 @@
+#cloud-config
+# Vultr user-data for the LeafLink team dashboard (CPU-only). Ubuntu 24.04 x64.
+# Rendered by launch.sh, which pastes Dockerfile.cpu into the placeholder below. No secrets in here:
+# Vultr user-data is readable from the instance metadata service, so the API token is generated
+# on the box at first boot and stored root-only in /opt/leaflink/.env.
+package_update: true
+packages: [docker.io, docker-compose-v2, docker-buildx, git, ufw, openssl]
+
+write_files:
+  - path: /opt/leaflink/Dockerfile.cpu
+    permissions: "0644"
+    content: |
+      @DOCKERFILE@
+  - path: /opt/leaflink/compose.yaml
+    permissions: "0644"
+    content: |
+      services:
+        leaflink:
+          build: {context: ./src, dockerfile: ../Dockerfile.cpu}
+          env_file: .env
+          volumes: [leaflink-data:/app/runtime]
+          restart: unless-stopped
+        caddy:
+          image: caddy:2
+          ports: ["80:80", "443:443"]
+          volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy-data:/data]
+          depends_on: [leaflink]
+          restart: unless-stopped
+      volumes: {leaflink-data: {}, caddy-data: {}}
+  - path: /opt/leaflink/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euxo pipefail
+      cd /opt/leaflink
+      IP=$(hostname -I | awk '{print $1}')
+      DOMAIN="${IP//./-}.sslip.io"          # free wildcard DNS -> real Let's Encrypt cert, no domain needed
+      [ -d src ] || git clone --depth 1 https://github.com/NarwhaLIX/LeafLink.git src
+      if [ ! -f .env ]; then
+        umask 077
+        cat > .env <<EOF
+      API_TOKEN=$(openssl rand -hex 32)
+      CORS_ORIGINS=https://$DOMAIN
+      MODEL_MODE=disabled
+      LEAF_CROP_MODE=disabled
+      EOF
+      fi
+      printf '%s {\n  reverse_proxy leaflink:8080\n  request_body {\n    max_size 13MB\n  }\n}\n' "$DOMAIN" > Caddyfile
+      ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
+      docker compose up -d --build
+      echo "https://$DOMAIN" > /opt/leaflink/URL
+
+runcmd:
+  - [bash, -c, "/opt/leaflink/bootstrap.sh > /var/log/leaflink-bootstrap.log 2>&1"]

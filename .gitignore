@@ -10,3 +10,4 @@ test_images/*
 !test_images/.gitkeep
 calibration/*_mock*
 .env
+deploy/vultr/user-data.yaml

@@ -1,0 +1,2 @@
+zelos-sdk==0.0.13                   # live telemetry to the Zelos app (abi3 manylinux_2_28 aarch64 wheel)
+pyarrow==18.1.0                     # zelos-sdk dep; cp313 manylinux aarch64 wheel
