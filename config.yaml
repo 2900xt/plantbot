@@ -14,6 +14,7 @@ motors:
   # mock     = prints / tracks speeds only
   driver: gpiozero
   watchdog_ms: 500             # stop if no drive command for this long
+  debug_gpio: true             # log every motor pin change (plantbot.hal.motors.gpio); false once it all works
   max_speed: 1.0               # global clamp, 0..1
   invert_left: false
   invert_right: false          # flip if hw_check spins a wheel backwards (or swap its motor leads)
