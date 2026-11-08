@@ -13,3 +13,4 @@ calibration/*_mock*
 deploy/vultr/user-data.yaml
 Pictures_Test/
 .leaflink_sent.json
+calibration/voc_drift.json
