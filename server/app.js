@@ -9,7 +9,7 @@ export function createApp(c, pipeline) {
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https: http:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" });
+      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data: http: https:; connect-src 'self' https: http: ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" });
     next();
   });
   app.use(cors({ origin(origin, callback) { callback(null, !origin || c.origins.includes(origin)); }, allowedHeaders: ['Authorization','Content-Type','Idempotency-Key'] }));

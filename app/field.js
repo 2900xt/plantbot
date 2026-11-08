@@ -1,6 +1,7 @@
 import './field.css';
 import {createFieldMap} from './field-map.js';
 import {groupMarkers} from './map-data.js';
+import './rover.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=value=>value?new Date(value).toLocaleString(): '—';
@@ -237,7 +238,7 @@ function showFullPhoto(c){
   if(!dialog){dialog=document.createElement('dialog');dialog.id='photo-viewer';dialog.setAttribute('aria-label','Full field image');dialog.innerHTML='<button id="close-viewer" class="image-close" aria-label="Close image and return to map" title="Return to map">×</button><img id="full-photo" alt="Full field image">';document.body.append(dialog);$('close-viewer').onclick=returnToMap;dialog.addEventListener('cancel',e=>{e.preventDefault();returnToMap();});dialog.addEventListener('click',e=>{if(e.target===dialog)returnToMap();});}
   image(`/captures/${c.id}/image`,c.id,$('full-photo'));dialog.showModal();
 }
-function applyRoute(){const hash=location.hash.slice(1);if(hash.startsWith('images/')){const id=hash.slice(7);if(/^[a-z0-9-]+$/.test(id)&&connected&&selected!==id)openCapture(id);else tab('capture');}else if(hash==='images')tab('capture');else if(['sensors','rules'].includes(hash))tab(hash);else tab('monitor');}
+function applyRoute(){const hash=location.hash.slice(1);if(hash.startsWith('images/')){const id=hash.slice(7);if(/^[a-z0-9-]+$/.test(id)&&connected&&selected!==id)openCapture(id);else tab('capture');}else if(hash==='images')tab('capture');else if(['sensors','rules','rover'].includes(hash))tab(hash);else tab('monitor');}
 window.addEventListener('hashchange',applyRoute);
 renderGrid();
 if(token)connect().catch(error=>notice(error.message,true));
