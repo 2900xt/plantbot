@@ -12,6 +12,8 @@ export function config(env = process.env) {
     modelTimeout: Number(env.MODEL_TIMEOUT_MS || (env.MODEL_MODE === 'local' ? 120000 : 30000)), demoVerdict: env.DEMO_VERDICT || 'diseased',
     localModelDir: path.resolve(env.LOCAL_MODEL_DIR || '../outputs/models/leaf-cnn-epoch6'),
     gpuModelDir:path.resolve(env.GPU_MODEL_DIR || './models/LeafCNN-Epoch8-GPU'),
+    expertModelDir:path.resolve(env.EXPERT_MODEL_DIR || './models/CropExperts-ResNet18'),
+    expertDevice:env.EXPERT_DEVICE || 'auto',
     leafVersion:env.LEAF_HEURISTIC_VERSION || 'v2',
     inferenceThreads:Number(env.INFERENCE_CPU_THREADS || 8),inferenceFormat:env.INFERENCE_MEMORY_FORMAT || 'channels_last',
     leafMode: env.LEAF_CROP_MODE || 'heuristic', groundMode: env.GROUND_MASK_MODE || 'local',
@@ -27,7 +29,8 @@ export function config(env = process.env) {
   if (!['local', 'b2'].includes(c.driver)) throw new Error('Invalid STORAGE_DRIVER');
   if (c.driver === 'b2' && ![c.endpoint,c.region,c.bucket,c.keyId,c.appKey].every(Boolean)) throw new Error('All B2 settings are required');
   if (c.driver === 'b2' && (!/^https:\/\/s3\.[a-z0-9-]+\.backblazeb2\.com$/.test(c.endpoint))) throw new Error('Use the HTTPS B2 regional S3 endpoint');
-  if (!['disabled','http','demo','local','gpu'].includes(c.modelMode)) throw new Error('Invalid MODEL_MODE');
+  if (!['disabled','http','demo','local','gpu','experts'].includes(c.modelMode)) throw new Error('Invalid MODEL_MODE');
+  if (!['auto','cpu','cuda'].includes(c.expertDevice)) throw new Error('EXPERT_DEVICE must be auto, cpu or cuda');
   if (![undefined,'0','1'].includes(env.BINARY_TRIAGE) || !Number.isFinite(c.binaryDiseaseThreshold) || c.binaryDiseaseThreshold < 0 || c.binaryDiseaseThreshold > 1) throw new Error('Binary threshold must be between 0 and 1 and BINARY_TRIAGE=0 or 1');
   if (!['v1','v2'].includes(c.leafVersion)) throw new Error('Invalid LEAF_HEURISTIC_VERSION');
   if (!['cpu','cuda'].includes(c.groundDevice) || !Number.isInteger(c.groundCpuThreads) || c.groundCpuThreads<1 || c.groundCpuThreads>32) throw new Error('Invalid ground runtime settings');

@@ -5,6 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { storage } from './storage.js';
 import { infer } from './model.js';
+import {closeExpertWorker} from './experts.js';
 import { extractLeaves, closeLeafWorker } from './leaves.js';
 import { createFieldStore } from './field.js';
 
@@ -239,6 +240,6 @@ export async function createPipeline(c, overrides = {}) {
       const leaf = row?.leaves && JSON.parse(row.leaves).find(leaf => leaf.id === leafId);
       return leaf ? objects.get(leaf.object_key) : null;
     },
-    close() { c.gpuWorker?.child.kill(); closeLeafWorker(c); db.close(); },
+    close() { c.gpuWorker?.child.kill(); closeExpertWorker(c); closeLeafWorker(c); db.close(); },
   };
 }

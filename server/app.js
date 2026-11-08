@@ -36,7 +36,7 @@ export function createApp(c, pipeline) {
   app.post('/api/telemetry/location', (req,res)=>res.status(202).json(pipeline.field.ingestLocation(req.body)));
   app.post('/api/telemetry/reset', (req,res)=>res.json(pipeline.field.resetBaseline(req.body?.device)));
   app.get('/api/config', (req,res) => res.json({ storage: c.driver, model: c.modelMode, leaf_extraction:c.leafMode, ground_mask:c.groundMode,
-    binary_triage:c.binaryTriage, binary_policy:c.binaryTriage?{disease_threshold:c.binaryDiseaseThreshold,provisional:true}:null }));
+    binary_triage:c.binaryTriage && c.modelMode!=='experts', binary_policy:c.modelMode==='experts'?{kind:'selected_expert_sigmoid',disease_threshold:.5}:c.binaryTriage?{disease_threshold:c.binaryDiseaseThreshold,provisional:true}:null }));
   app.get('/api/captures', (req,res) => res.json(pipeline.list()));
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 2, fields: 2, fieldSize: 4096, parts: 4 } });
   app.post('/api/captures', rateLimit({ windowMs: 60000, limit: 20, legacyHeaders: false }), upload.fields([{name:'image',maxCount:1},{name:'ground_mask',maxCount:1}]), async (req,res) => {

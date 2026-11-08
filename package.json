@@ -14,7 +14,13 @@
     "build": "vite build",
     "native:sync": "npm run build && cap sync",
     "android": "npm run native:sync && cap open android",
-    "ios": "npm run native:sync && cap open ios"
+    "ios": "npm run native:sync && cap open ios",
+    "setup:models": "node setup-models.js",
+    "prestart": "npm run build",
+    "prestart:field": "npm run build",
+    "prestart:legacy": "npm run build",
+    "start:experts": "node server/configure-field.js --experts --show-token && node --env-file=.env.experts server/index.js",
+    "prestart:experts": "npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
