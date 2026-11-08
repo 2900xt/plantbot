@@ -22,6 +22,8 @@ Open http://localhost:8000/. In mock mode every device is fake:
 
 Try it: press **Scan** (or Space) for a normal plant; press **Mock VOC spike**, wait 3 s, then Scan, and the score drops on the smell term. Drive with WASD or the pad; let go, or close the tab, and the watchdog stops the motors within 0.5 s.
 
+**Scripted demo** (expo / video): `.venv/bin/python tools/demo.py` runs the same dashboard in mock mode, then drives a fixed row of 5 plants in AUTO and gets the same results every time: healthy, healthy, watch (leaf spot), unhealthy (blight, VOC puff), healthy. `--loop` repeats it forever, `--manual` waits for you to press Auto. The row is `PLANTS` at the top of `tools/demo.py`; scans go to `scans-demo/`.
+
 ## Layout
 
 ```

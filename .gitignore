@@ -11,3 +11,4 @@ test_images/*
 calibration/*_mock*
 .env
 deploy/vultr/user-data.yaml
+scans-demo/
