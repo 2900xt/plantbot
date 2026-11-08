@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 const defaults = { infected_samples:3, image_rule:'percent',infected_percent:10,cache_hours:24, cache_limit:100, grid_meters:5,
   origin_lat:0, origin_lon:0, voc_top_rise:10, voc_difference_rise:5,
-  voc_hold:5, voc_max_gap_seconds:10, location_max_age_seconds:10 };
+  voc_hold:5, voc_max_gap_seconds:10, location_max_age_seconds:10, gas_threshold:150, gas_hold:2 };
 const fail = message => { throw Object.assign(new Error(message), {status:400}); };
 export function location(value) {
   if (value == null) return null;
@@ -32,6 +32,8 @@ export function createFieldStore(db, now=Date.now) {
     CREATE TABLE IF NOT EXISTS field_locations (device TEXT PRIMARY KEY, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_location_samples (sequence INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_samples (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL, UNIQUE(device,id));
+    CREATE TABLE IF NOT EXISTS field_gas (sequence INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, measured_at TEXT NOT NULL, received_at TEXT NOT NULL, body TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS field_gas_device ON field_gas(device,sequence);
     CREATE TABLE IF NOT EXISTS field_sensor_state (device TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_events (id TEXT PRIMARY KEY, kind TEXT NOT NULL, capture_id TEXT UNIQUE, created TEXT NOT NULL, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS field_cache (event_id TEXT PRIMARY KEY, expires INTEGER NOT NULL, image BLOB NOT NULL);
@@ -73,9 +75,9 @@ export function createFieldStore(db, now=Date.now) {
       }
       // Preserve callers of the original count-only API.
       if(Object.hasOwn(patch,'infected_samples')&&!Object.hasOwn(patch,'image_rule')&&!Object.hasOwn(patch,'infected_percent'))s.image_rule='count';
-      const bounds={infected_samples:[1,64],infected_percent:[1,100],cache_hours:[.01,168],cache_limit:[1,500],grid_meters:[1,1000],origin_lat:[-85,85],origin_lon:[-180,180],voc_top_rise:[.000001,1e9],voc_difference_rise:[.000001,1e9],voc_hold:[1,1000],voc_max_gap_seconds:[.1,3600],location_max_age_seconds:[0,3600]};
+      const bounds={infected_samples:[1,64],infected_percent:[1,100],cache_hours:[.01,168],cache_limit:[1,500],grid_meters:[1,1000],origin_lat:[-85,85],origin_lon:[-180,180],voc_top_rise:[.000001,1e9],voc_difference_rise:[.000001,1e9],voc_hold:[1,1000],gas_threshold:[0,1e9],gas_hold:[1,1000],voc_max_gap_seconds:[.1,3600],location_max_age_seconds:[0,3600]};
       for (const [key,[min,max]] of Object.entries(bounds)) if(s[key]<min||s[key]>max) fail(`${key} must be ${min}–${max}`);
-      for (const key of ['infected_samples','cache_limit','voc_hold']) if(!Number.isInteger(s[key])) fail(`${key} must be an integer`);
+      for (const key of ['infected_samples','cache_limit','voc_hold','gas_hold']) if(!Number.isInteger(s[key])) fail(`${key} must be an integer`);
       db.exec('BEGIN IMMEDIATE');
       try {
         const previous=settings();
@@ -171,6 +173,32 @@ export function createFieldStore(db, now=Date.now) {
         db.exec('COMMIT');return results;
       } catch(error) {db.exec('ROLLBACK');throw error;}
     },
+    // Gas sensor (e.g. MQ-2 on a Raspberry Pi). Send {device, value, units} for an analog reading,
+    // or {device, alarm:true|false} for the module's digital DO pin. The server makes the decision.
+    ingestGas(input) {
+      if(!input||typeof input!=='object'||Array.isArray(input)) fail('Gas sample must be an object');
+      const s=settings(),device=deviceName(input.device),measured_at=timestamp(input.measured_at),received_at=new Date(now()).toISOString();
+      const hasValue=input.value!=null,hasAlarm=input.alarm!=null;
+      if(!hasValue&&!hasAlarm) fail('Send a numeric value or a boolean alarm');
+      if(hasValue&&(typeof input.value!=='number'||!Number.isFinite(input.value)||Math.abs(input.value)>1e12)) fail('value must be a finite number');
+      if(hasAlarm&&typeof input.alarm!=='boolean') fail('alarm must be true or false');
+      const units=input.units==null?(hasValue?'raw':'digital'):input.units;
+      if(typeof units!=='string'||!units.trim()||units.length>40) fail('Invalid units');
+      const previous=db.prepare('SELECT measured_at,body FROM field_gas WHERE device=? ORDER BY sequence DESC LIMIT 1').get(device);
+      if(previous&&measured_at<=previous.measured_at) fail('Gas timestamps must increase for each device');
+      const exceeded=hasValue?input.value>=s.gas_threshold:input.alarm;
+      const consecutive=exceeded?(previous?JSON.parse(previous.body).consecutive:0)+1:0;
+      const status=consecutive>=s.gas_hold?'alert':exceeded?'rising':'ok';
+      const loc=location(input.location)||latestLocation(device,measured_at);
+      const sample={device,measured_at,received_at,value:hasValue?input.value:null,alarm:hasAlarm?input.alarm:null,units,
+        threshold:s.gas_threshold,hold:s.gas_hold,exceeded,consecutive,status,location:loc};
+      // One event per sustained episode, shown with the other anomalies.
+      if(consecutive===s.gas_hold) sample.event_id=insertEvent('gas',{device,location:loc,measured_at,value:sample.value,
+        threshold:s.gas_threshold,measurements:consecutive,units,simulated:false});
+      db.prepare('INSERT INTO field_gas(device,measured_at,received_at,body) VALUES (?,?,?,?)').run(device,measured_at,received_at,JSON.stringify(sample));
+      db.exec('DELETE FROM field_gas WHERE sequence < (SELECT COALESCE(MAX(sequence),0)-9999 FROM field_gas)');
+      return sample;
+    },
     resetBaseline(device) {deviceName(device);db.prepare('DELETE FROM field_sensor_state WHERE device=?').run(device);return {device,reset:true};},
     events() {purge();return db.prepare('SELECT * FROM field_events ORDER BY created DESC,rowid DESC LIMIT 500').all().map(publicEvent);},
     eventImage(id) {purge();return db.prepare('SELECT image FROM field_cache WHERE event_id=?').get(id)?.image || null;},
@@ -179,7 +207,8 @@ export function createFieldStore(db, now=Date.now) {
       for(const row of db.prepare('SELECT kind,body FROM field_events').iterate()) {
         const e=JSON.parse(row.body),cell=gridCell(e.location,s);if(!cell) continue;
         const key=`${cell.x},${cell.y}`;
-        const count=cells.get(key)||{...cell,image:0,voc:0,simulated:0,simulated_image:0,simulated_voc:0,latest_capture_id:null};
+        const count=cells.get(key)||{...cell,image:0,voc:0,gas:0,simulated:0,simulated_image:0,simulated_voc:0,latest_capture_id:null};
+        count.gas??=0;
         if(e.simulated) count.simulated++;else count[row.kind]++;
         if(e.simulated)count[`simulated_${row.kind}`]++;
         cells.set(key,count);
@@ -194,6 +223,7 @@ export function createFieldStore(db, now=Date.now) {
         cache_count:db.prepare('SELECT COUNT(*) AS n FROM field_cache').get().n,
         locations:db.prepare('SELECT * FROM field_locations ORDER BY received_at DESC LIMIT 100').all().map(r=>({...r,location:JSON.parse(r.body),body:undefined})),
         location_history:db.prepare('SELECT device,measured_at,received_at,body FROM field_location_samples ORDER BY sequence DESC LIMIT 100').all().map(r=>({...r,location:JSON.parse(r.body),body:undefined})),
+        gas:db.prepare('SELECT body FROM field_gas ORDER BY sequence DESC LIMIT 50').all().map(r=>JSON.parse(r.body)),
         samples:db.prepare('SELECT body FROM field_samples ORDER BY sequence DESC LIMIT 100').all().map(r=>{const {signature,...sample}=JSON.parse(r.body);return sample;})};
     }
   };

@@ -59,7 +59,7 @@ async function refresh(){
     if(current!==generation)return;
     [field,events,captures]=results;settings=field.settings;
     $('status').textContent='Connected';$('status').classList.add('online');$('last-sync').textContent=`Last sync ${new Date().toLocaleTimeString()}`;
-    renderGrid();renderEvents();renderCaptures();renderSensors();
+    renderGrid();renderEvents();renderCaptures();renderSensors();renderGas();
     if(selected)await renderDetail();
   }catch(error){if(current===generation){$('status').textContent='Connection lost';$('status').classList.remove('online');notice(`${error.message}. Data shown may be stale; retry or reconnect.`,true);}}
   finally{busy=false;}
@@ -209,6 +209,17 @@ for(const id of ['mask','photo-device','captured-at','photo-lat','photo-lon'])$(
 $('rules-form').onsubmit=async e=>{e.preventDefault();try{const patch=Object.fromEntries(new FormData(e.target).entries());for(const key of Object.keys(patch))if(key!=='image_rule')patch[key]=Number(patch[key]);settings=await json('/settings',patch,'PUT');fillRules();notice('Event rules saved. New images use the updated threshold.');eventSignature='';await refresh();}catch(error){notice(error.message,true);}};
 $('sensor-form').onsubmit=async e=>{e.preventDefault();try{await json('/telemetry/voc',{device:$('sensor-device').value,top:Number($('top').value),bottom:Number($('bottom').value),units:$('units').value,location:inputLocation('sensor'),sample_id:crypto.randomUUID(),measured_at:new Date().toISOString()});notice('Sensor measurement recorded.');await refresh();}catch(error){notice(error.message,true);}};
 $('reset-baseline').onclick=async()=>{try{await json('/telemetry/reset',{device:$('sensor-device').value});notice('Baseline reset. The next reading becomes the reference.');}catch(error){notice(error.message,true);}};
+function renderGas(){
+  const g=(field?.gas||[])[0],card=$('gas-card');if(!card)return;
+  if(!g){card.className='gas-card gas-idle';$('gas-status').textContent='No data';$('gas-reading').textContent='Waiting for hardware…';$('gas-fill').style.width='0%';$('gas-detail').textContent='Threshold set in Event rules.';return;}
+  const stale=Date.now()-Date.parse(g.measured_at)>30000;
+  card.className='gas-card gas-'+(stale?'idle':g.status);
+  $('gas-status').textContent=stale?'Offline':g.status==='alert'?'GAS ALERT':g.status==='rising'?'Rising':'Normal';
+  $('gas-reading').textContent=g.value!=null?`${num(g.value)} ${g.units}`:(g.alarm?'Digital alarm: gas detected':'Digital alarm: clear');
+  const pct=g.value!=null&&g.threshold>0?Math.min(100,100*g.value/(g.threshold*1.5)):g.alarm?100:0;
+  $('gas-fill').style.width=pct+'%';
+  $('gas-detail').textContent=`${g.device} · threshold ${num(g.threshold)} · ${g.consecutive}/${g.hold} in a row · ${new Date(g.measured_at).toLocaleTimeString()}`;
+}
 function renderSensors(){
   const samples=field?.samples||[],latest=samples[0];$('sensor-summary').textContent=latest?`${latest.device} · top ${num(latest.top)}, bottom ${num(latest.bottom)} ${latest.units} · ${latest.consecutive}/${settings.voc_hold} hold`:'No measurements received.';
   $('samples').innerHTML=samples.length?samples.map(s=>`<tr><td>${date(s.measured_at)}<br>${esc(s.device)}</td><td>${num(s.top_change)}</td><td>${num(s.difference_change)}</td><td>${s.consecutive}/${settings.voc_hold}${s.event_id?' · event':''}</td></tr>`).join(''):'<tr><td colspan="4">Waiting for sensor data.</td></tr>';

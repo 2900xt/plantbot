@@ -21,3 +21,14 @@
 .marker-note .preview-no-photo{font-size:13px;color:var(--muted);margin:8px 0 0}
 .marker-note>button:not(.note-close){width:100%;min-height:40px;margin-top:10px}
 .note-close{right:4px;top:4px}
+
+/* Gas sensor card (MQ-2 via POST /api/telemetry/gas) */
+.gas-card{border:1px solid #c9c2b0;border-radius:10px;padding:12px;margin-bottom:12px;background:#fffdf7}
+.gas-head{display:flex;justify-content:space-between;align-items:center;font-size:.85rem}
+.gas-reading{font-size:1.4rem;font-weight:600;margin:6px 0}
+.gas-bar{position:relative;height:8px;background:#e8e3d4;border-radius:4px;overflow:hidden}
+.gas-bar i{display:block;height:100%;width:0;background:#4a7c3a;transition:width .3s}
+.gas-bar b{position:absolute;left:66.7%;top:0;bottom:0;width:2px;background:#222}
+.gas-rising{border-color:#d9a400}.gas-rising .gas-bar i{background:#d9a400}
+.gas-alert{border-color:#c62828;background:#fdecea}.gas-alert .gas-bar i{background:#c62828}.gas-alert .gas-head strong{color:#c62828}
+.gas-idle .gas-head strong{color:#777}
