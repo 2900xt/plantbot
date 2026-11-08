@@ -67,6 +67,7 @@ class Mission:
         self.task: asyncio.Task | None = None  # current scan or auto run
         self.cancel = threading.Event()  # tells sniff threads to bail on E-stop
         self.broadcast: Callable[[dict], Awaitable[None]] = self._no_broadcast
+        self._drive_refused_at = 0.0
         self.loop: asyncio.AbstractEventLoop | None = None
         self.last_turgor: dict | None = None
 
@@ -102,6 +103,10 @@ class Mission:
             l, r = msg["drive"]
             if self.state in DRIVABLE and self.mode == "manual":
                 self.r.motors.drive(float(l), float(r))
+            elif (l or r) and time.monotonic() - self._drive_refused_at > 2:  # held buttons resend at 10 Hz
+                self._drive_refused_at = time.monotonic()
+                log.warning("drive ignored: state=%s mode=%s (drive works in %s, manual mode)",
+                            self.state, self.mode, "/".join(sorted(DRIVABLE)))
             return
         cmd = msg.get("cmd")
         if cmd == "estop":

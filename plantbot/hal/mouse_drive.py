@@ -35,6 +35,8 @@ async def run(mission, cfg) -> None:
     b = cfg.buttons
     codes = {name: evdev.ecodes.ecodes[getattr(b, name)]
              for name in ("left_fwd", "left_back", "right_fwd", "right_back")}
+    names = {code: f"{getattr(b, name)}({name})" for name, code in codes.items()}
+    log.info("mouse drive: %s", ", ".join(names.values()))
     while True:
         dev = _find_mouse(evdev, cfg.get("device"))
         if dev is None:
@@ -55,6 +57,9 @@ async def run(mission, cfg) -> None:
                     held.discard(ev.code)
                 else:
                     continue  # key repeat
+                left, right = _command(cfg.speed, codes, held)
+                log.info("mouse %s %s -> drive L=%+.2f R=%+.2f", names[ev.code], "down" if ev.value else "up",
+                         left, right)
                 if held and (sender is None or sender.done()):
                     sender = asyncio.create_task(_send_while_held(mission, cfg.speed, codes, held))
                 elif not held:
@@ -74,9 +79,13 @@ async def run(mission, cfg) -> None:
         await asyncio.sleep(1)
 
 
+def _command(speed: float, codes: dict, held: set) -> tuple[float, float]:
+    left = speed * ((codes["left_fwd"] in held) - (codes["left_back"] in held))
+    right = speed * ((codes["right_fwd"] in held) - (codes["right_back"] in held))
+    return left, right
+
+
 async def _send_while_held(mission, speed: float, codes: dict, held: set) -> None:
     while held:
-        left = speed * ((codes["left_fwd"] in held) - (codes["left_back"] in held))
-        right = speed * ((codes["right_fwd"] in held) - (codes["right_back"] in held))
-        await mission.handle({"drive": [left, right]})
+        await mission.handle({"drive": list(_command(speed, codes, held))})
         await asyncio.sleep(RESEND_S)

@@ -7,6 +7,8 @@ import time
 from typing import Protocol
 
 log = logging.getLogger(__name__)
+# Every pin write. Quiet unless motors.debug_gpio: true (or -v).
+gpio_log = logging.getLogger(__name__ + ".gpio")
 
 
 class Motors(Protocol):
@@ -67,23 +69,36 @@ class _HBridgeChannel:
     (L298N), so low speeds have more torque and a stop actually stops.
     """
 
-    def __init__(self, in1: int, in2: int, pwm: int, freq: int, min_duty: float):
+    def __init__(self, in1: int, in2: int, pwm: int, freq: int, min_duty: float, name: str = ""):
         from gpiozero import DigitalOutputDevice, PWMOutputDevice  # lazy
 
         self.in1 = DigitalOutputDevice(in1)
         self.in2 = DigitalOutputDevice(in2)
         self.pwm = PWMOutputDevice(pwm, frequency=freq)
         self.min_duty = min_duty
+        self.name = name
+        self._last = None
+        gpio_log.info("%s channel: IN1=GPIO%d IN2=GPIO%d PWM=GPIO%d @ %d Hz", name, in1, in2, pwm, freq)
+
+    def _log(self, v: float) -> None:
+        state = (int(self.in1.value), int(self.in2.value), round(self.pwm.value, 2))
+        if state != self._last:  # drive() is re-sent at 10 Hz; only log changes
+            self._last = state
+            gpio_log.debug("%s v=%+.2f -> GPIO%d(IN1)=%d GPIO%d(IN2)=%d GPIO%d(PWM)=%.2f", self.name, v,
+                           self.in1.pin.number, state[0], self.in2.pin.number, state[1],
+                           self.pwm.pin.number, state[2])
 
     def set(self, v: float) -> None:
         v = _clamp(v)
         if v == 0:
             self.pwm.value = 0
+            self._log(v)
             return
         # Gear motors don't turn below some duty; map (0, 1] onto [min_duty, 1].
         duty = self.min_duty + (1 - self.min_duty) * abs(v)
         self.in1.value, self.in2.value = (v > 0), (v < 0)
         self.pwm.value = duty
+        self._log(v)
 
     def close(self) -> None:
         self.pwm.value = 0
@@ -98,17 +113,21 @@ class GpioZeroMotors:
         from gpiozero import DigitalOutputDevice  # lazy
 
         h = cfg.hbridge
+        if cfg.get("debug_gpio"):
+            gpio_log.setLevel(logging.DEBUG)
         freq, min_duty = h.get("pwm_hz", 1000), h.get("min_duty", 0.0)
-        self.l = _HBridgeChannel(h.left_in1, h.left_in2, h.left_pwm, freq, min_duty)
+        self.l = _HBridgeChannel(h.left_in1, h.left_in2, h.left_pwm, freq, min_duty, "A/left")
         # Both channels wired to the same three pins: one channel drives both wheels, no steering.
         self.shared = (h.left_in1, h.left_in2, h.left_pwm) == (h.right_in1, h.right_in2, h.right_pwm)
         if self.shared:
             log.warning("hbridge: left and right share pins; both wheels get one command (no turning)")
             self.r = self.l
         else:
-            self.r = _HBridgeChannel(h.right_in1, h.right_in2, h.right_pwm, freq, min_duty)
+            self.r = _HBridgeChannel(h.right_in1, h.right_in2, h.right_pwm, freq, min_duty, "B/right")
         # STBY low = both channels off (TB6612 only). Raised last so nothing twitches on init.
         self.stby = DigitalOutputDevice(h.stby, initial_value=True) if h.get("stby") is not None else None
+        if self.stby:
+            gpio_log.info("STBY=GPIO%d high (driver enabled)", h.stby)
 
     def drive(self, left: float, right: float) -> None:
         if self.shared:
@@ -125,6 +144,7 @@ class GpioZeroMotors:
     def close(self) -> None:
         if self.stby:
             self.stby.off()
+            gpio_log.info("STBY low (driver disabled)")
             self.stby.close()
         self.l.close()
         if not self.shared:
