@@ -5,8 +5,9 @@
     python tools/gpio_debug.py watch      # live view; click mouse buttons and watch IN1/IN2/PWM change
     python tools/gpio_debug.py toggle     # each pin high 2 s then low, one at a time: probe with a multimeter
     python tools/gpio_debug.py toggle 20  # just GPIO20
+    python tools/gpio_debug.py spin       # full power, no PWM: 3 s forward, 3 s reverse. Rules software out.
 
-`toggle` drives the pins itself, so stop the service first: sudo systemctl stop plantbot.
+`toggle` and `spin` drive the pins themselves, so stop the service first: sudo systemctl stop plantbot.
 Wheels can spin during `toggle` (IN1 + PWM + STBY high together); lift them off the table.
 """
 from __future__ import annotations
@@ -94,9 +95,37 @@ def toggle(pins: dict[int, str], hold: float, force: bool) -> None:
             time.sleep(0.5)
 
 
+def spin(cfg, hold: float, force: bool) -> None:
+    """Pins held solid high/low (no PWM): if the wheels don't turn now, it's power or wiring."""
+    if service_active() and not force:
+        sys.exit("plantbot service is running and owns these pins: sudo systemctl stop plantbot (or --force)")
+    from gpiozero import DigitalOutputDevice  # lazy: only on the Pi
+
+    h = cfg.motors.hbridge
+    nums = sorted({h.left_in1, h.left_in2, h.left_pwm, h.right_in1, h.right_in2, h.right_pwm}
+                  | ({h.stby} if h.get("stby") is not None else set()))
+    dev = {n: DigitalOutputDevice(n) for n in nums}
+    ins1, ins2 = {h.left_in1, h.right_in1}, {h.left_in2, h.right_in2}
+    try:
+        for label, high in (("FORWARD", ins1), ("REVERSE", ins2)):
+            for n, d in dev.items():
+                d.value = n in high or n in (h.left_pwm, h.right_pwm, h.get("stby"))
+            print(f"{label} 100% for {hold:.0f} s: " + " ".join(f"GPIO{n}={int(d.value)}" for n, d in dev.items()))
+            print("  measure VM-to-GND on the driver now, and AO1-AO2 / BO1-BO2 (should be close to the battery)")
+            time.sleep(hold)
+            for d in dev.values():
+                d.off()
+            time.sleep(0.5)
+        print("stopped")
+    finally:
+        for d in dev.values():
+            d.off()
+            d.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", nargs="?", default="status", choices=["status", "watch", "toggle"])
+    ap.add_argument("mode", nargs="?", default="status", choices=["status", "watch", "toggle", "spin"])
     ap.add_argument("pin", nargs="*", type=int, help="only these GPIO numbers")
     ap.add_argument("--config")
     ap.add_argument("--hold", type=float, default=2.0, help="toggle: seconds each pin stays high")
@@ -115,6 +144,8 @@ def main() -> None:
         explain(pins)
     elif a.mode == "watch":
         watch(pins, a.period)
+    elif a.mode == "spin":
+        spin(cfg, max(a.hold, 3.0), a.force)
     else:
         toggle(pins, a.hold, a.force)
 
