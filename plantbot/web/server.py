@@ -34,6 +34,11 @@ def make_app(mission) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         tasks = [asyncio.create_task(mission.run()), asyncio.create_task(telemetry_loop())]
+        md = robot.cfg.get("mouse_drive")
+        if md and md.get("enabled") and not robot.cfg.mock_mode:
+            from plantbot.hal import mouse_drive
+
+            tasks.append(asyncio.create_task(mouse_drive.run(mission, md)))
         yield
         for t in tasks:
             t.cancel()

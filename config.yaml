@@ -65,6 +65,17 @@ env:
     vc: 5.0                    # MQ-2 module supply voltage
     rl_kohm: 1.0               # load resistor on the module (MEASURE IT, often 1-10k)
 
+mouse_drive:                   # tank drive from a USB mouse plugged into the Pi
+  enabled: true                # always off in --mock (it would grab the laptop's mouse)
+  device: null                 # null = first mouse found; or e.g. /dev/input/event3
+  grab: true                   # keep clicks away from any desktop on the Pi
+  speed: 0.6                   # 0..1 per wheel while a button is held
+  buttons:                     # evdev names; `python -m evdev.evtest` shows what each button sends
+    right_fwd: BTN_RIGHT       # mb1 (right click)
+    left_fwd: BTN_LEFT         # mb2 (left click)
+    right_back: BTN_MIDDLE     # mb3 (wheel click)
+    left_back: BTN_SIDE        # mb4 (thumb/back button)
+
 ranger:
   driver: hcsr04               # hcsr04 | none | mock
   trig_pin: 5
