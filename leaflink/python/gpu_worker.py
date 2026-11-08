@@ -22,6 +22,7 @@ for line in sys.stdin:
             'model_version':'leaf-cnn-epoch8-fp16-'+result['model_sha256'][:12],
             'class_name':result['class'],'class_index':result['classes'].index(result['class']),
             'input_size':[384,384],'score_type':'winning_class_softmax',
+            'classes':result['classes'],'probabilities':result['probabilities'],
             'top_predictions':[{'class_name':p['label'],'confidence':p['probability']} for p in result['top3']]}
         print(json.dumps(output),flush=True)
     except Exception as error:

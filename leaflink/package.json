@@ -10,14 +10,17 @@
     "start": "node server/configure-field.js --show-token && node --env-file=.env.field server/index.js",
     "start:legacy": "node --env-file-if-exists=.env server/index.js",
     "start:field": "node server/configure-field.js --show-token && node --env-file=.env.field server/index.js",
-    "test:models": "node --test test/v2-model-check.js",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "node --test test/*.test.js",
-    "test:ui": "node test/ui-check.js",
     "native:sync": "npm run build && cap sync",
     "android": "npm run native:sync && cap open android",
-    "ios": "npm run native:sync && cap open ios"
+    "ios": "npm run native:sync && cap open ios",
+    "setup:models": "node setup-models.js",
+    "prestart": "npm run build",
+    "prestart:field": "npm run build",
+    "prestart:legacy": "npm run build",
+    "start:experts": "node server/configure-field.js --experts --show-token && node --env-file=.env.experts server/index.js",
+    "prestart:experts": "npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
@@ -32,7 +35,6 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
-    "@playwright/test": "^1.65.0",
     "vite": "^7.0.0"
   }
 }

@@ -1,0 +1,42 @@
+{
+  "architecture": "frozen-resnet18-four-experts",
+  "experts": 4,
+  "general_fallback": false,
+  "hard_routing": true,
+  "image_size": 224,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "model_sha256": "07a0c6585200fbfe8fcc133948551d22846bc0b0ebbd76f9a4d48456a71a6889",
+  "expert_crops": {
+    "0": [
+      "apple",
+      "grape",
+      "orange",
+      "potato",
+      "soybean",
+      "squash",
+      "strawberry"
+    ],
+    "1": [
+      "peach"
+    ],
+    "2": [
+      "corn_maize"
+    ],
+    "3": [
+      "blueberry",
+      "cherry_including_sour",
+      "pepper_bell",
+      "raspberry",
+      "tomato"
+    ]
+  }
+}

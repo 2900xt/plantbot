@@ -5,7 +5,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { storage } from './storage.js';
 import { infer } from './model.js';
-import { extractLeaves } from './leaves.js';
+import {closeExpertWorker} from './experts.js';
+import { extractLeaves, closeLeafWorker } from './leaves.js';
 import { createFieldStore } from './field.js';
 
 async function normalizeMask(bytes, sourceSize, storedSize) {
@@ -145,21 +146,29 @@ export async function createPipeline(c, overrides = {}) {
             }
             db.prepare("UPDATE captures SET status='splitting' WHERE id=?").run(row.id);
             progress(row.id,'ground_mask','Preparing ground mask and reading stored source image');
-            const source = await objects.get(row.object_key);
-            const mask = row.mask_key ? await objects.get(row.mask_key) : undefined;
+            const [source,mask] = await Promise.all([
+              objects.get(row.object_key), row.mask_key ? objects.get(row.mask_key) : undefined,
+            ]);
             const {candidates,ground_mask,...extraction} = await split(source,mask,event=>{
               if (['ground_mask','leaf_separation'].includes(event.stage)) progress(row.id,event.stage,event.message);
             });
             progress(row.id,'saving_crops',`Saving ${candidates.length} leaf candidate crops`,{total_leaves:candidates.length,completed_leaves:0});
             const maskKey = row.mask_key || `captures/${row.id}/ground-mask.png`;
-            if (!row.mask_key) await objects.put(maskKey,ground_mask,'image/png');
-            leaves = [];
-            for (const [index,candidate] of candidates.entries()) {
-              const {bytes,...metadata} = candidate;
-              const id = `${row.id}-leaf-${String(index+1).padStart(2,'0')}`;
-              const key = `captures/${row.id}/${id}.jpg`;
-              await objects.put(key,bytes);
-              leaves.push({...metadata,id,index:index+1,object_key:key,status:'awaiting_model',result:null});
+            leaves = new Array(candidates.length);
+            // Bound remote object writes instead of making up to 40 serial
+            // round trips. Drain the whole batch before retrying any failure.
+            const writes = [{key:maskKey,bytes:ground_mask,type:'image/png',skip:!!row.mask_key},
+              ...candidates.map((candidate,index)=>{
+                const {bytes,...metadata}=candidate;
+                const id=`${row.id}-leaf-${String(index+1).padStart(2,'0')}`;
+                const key=`captures/${row.id}/${id}.jpg`;
+                leaves[index]={...metadata,id,index:index+1,object_key:key,status:'awaiting_model',result:null};
+                return {key,bytes,type:'image/jpeg'};
+              })].filter(item=>!item.skip);
+            for (let offset=0;offset<writes.length;offset+=4) {
+              const settled=await Promise.allSettled(writes.slice(offset,offset+4).map(item=>objects.put(item.key,item.bytes,item.type)));
+              const failed=settled.find(item=>item.status==='rejected');
+              if (failed) throw failed.reason;
             }
             // Persist the manifest only after every crop has reached storage.
             db.prepare('UPDATE captures SET extraction=?, leaves=?, mask_key=?, mask_stored=1 WHERE id=?')
@@ -231,6 +240,6 @@ export async function createPipeline(c, overrides = {}) {
       const leaf = row?.leaves && JSON.parse(row.leaves).find(leaf => leaf.id === leafId);
       return leaf ? objects.get(leaf.object_key) : null;
     },
-    close() { c.gpuWorker?.child.kill(); db.close(); },
+    close() { c.gpuWorker?.child.kill(); closeExpertWorker(c); closeLeafWorker(c); db.close(); },
   };
 }
