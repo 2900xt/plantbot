@@ -19,7 +19,8 @@
     "start:experts": "node setup.js --start --experts",
     "setup": "node setup.js",
     "doctor": "node setup.js --check",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "prestart:legacy": "npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

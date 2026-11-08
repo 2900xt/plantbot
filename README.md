@@ -57,3 +57,9 @@ For a fresh clone you do **not** need to manually run `npm ci`, `setup-models.js
 Startup checks execute CUDA and torchvision kernels, load the actual B2 ground checkpoint, and run the selected real classifier on a synthetic image. They establish runtime compatibility, not infected/healthy accuracy on field photos. A failed check prevents this launcher from starting an unready server. They do not install NVIDIA drivers or perform reboots.
 
 Official runtime references: [PyTorch2.11 matching CUDA wheels](https://pytorch.org/get-started/previous-versions/), [NVIDIA CUDA driver compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html), [uv managed Python](https://docs.astral.sh/uv/concepts/python-versions/). Portable tools are fetched from official Node.js/Astral releases with SHA256 verification; the Windows Microsoft runtime is checked with Authenticode.
+
+## Fresh-install verification
+
+A clean GitHub clone in a folder with spaces, without weights, node_modules or a Python environment, passed on a Kaggle Tesla T4: portable Node and managed Python installation, all three weight checks, CUDA kernels, both classifier runtime probes, frontend/server health and a real HTTP image upload producing40 classified candidates. First setup took66.7s on Kaggle's fast network; cached setup14.2s. These are observations, not promised download times. Five setup/config tests and the frontend build pass locally. [Exact environment and verification scope](docs/setup-validation.json).
+
+Windows launcher syntax/config handling was tested locally; a Windows NVIDIA GPU machine was not available for a full installation test. The clean GPU run used CUDA13.0; the driver570 compatibility path is verified on the user's device at launch. This is why the launcher checks real execution and reports failures instead of promising every NVIDIA device will work.
