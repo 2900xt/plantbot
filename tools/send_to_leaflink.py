@@ -193,8 +193,12 @@ def main():
     here = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--photos", default=str(here / "Pictures_Test"), help="folder pull_pictures.py fills")
-    ap.add_argument("--leaflink", default=str(Path.home() / "Downloads/LeafLink-main/LeafLink-main"),
-                    help="LeafLink folder (holds .env.field)")
+    # LeafLink folder holding .env.field: the repo's leaflink/ when this runs from tools/,
+    # else a plantbot clone in Downloads, else the old standalone LeafLink download.
+    candidates = [here.parent / "leaflink", Path.home() / "Downloads/plantbot/leaflink",
+                  Path.home() / "Downloads/LeafLink-main/LeafLink-main"]
+    default_ll = next((c for c in candidates if (c / ".env.field").exists()), candidates[1])
+    ap.add_argument("--leaflink", default=str(default_ll), help="LeafLink folder (holds .env.field)")
     ap.add_argument("--device", default="rover-1", help="device name shown in LeafLink")
     ap.add_argument("--once", action="store_true", help="send everything, wait for results, then exit")
     ap.add_argument("--no-open", action="store_true", help="write session reports but don't open the browser")
